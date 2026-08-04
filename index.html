@@ -838,7 +838,7 @@ let activePersonFilter = null;
 let activeRuntimeFilter = null;
 let activeAgeGroupFilter = null;
 let activeLanguageFilter = null;
-let activeRatingFilter = null;
+let activeRatingFilters = new Set();
 let activeSeenSort = null; // null | "desc" (newest seen first) | "asc" (oldest seen first)
 
 const RUNTIME_BUCKETS = ["Short (1–20 min)", "Medium (21–60 min)", "Full feature (60+ min)"];
@@ -1166,8 +1166,8 @@ function renderChips(){
   ratingChips.innerHTML = "";
   ratingChips.appendChild(el("span","chip-group-label","Family rating"));
   FAMILY_RATINGS.forEach(n => {
-    const chip = el("button","chip"+(activeRatingFilter===n?" active":""), n + "&#9733;");
-    chip.onclick = () => { activeRatingFilter = activeRatingFilter===n ? null : n; render(); };
+    const chip = el("button","chip"+(activeRatingFilters.has(n)?" active":""), n + "&#9733;");
+    chip.onclick = () => { activeRatingFilters.has(n) ? activeRatingFilters.delete(n) : activeRatingFilters.add(n); render(); };
     ratingChips.appendChild(chip);
   });
 }
@@ -1186,7 +1186,7 @@ function render(){
     if(activeRuntimeFilter && runtimeBucket(m.runtimeMinutes) !== activeRuntimeFilter) return false;
     if(activeAgeGroupFilter && m.ageGroup !== activeAgeGroupFilter) return false;
     if(activeLanguageFilter && m.language !== activeLanguageFilter) return false;
-    if(activeRatingFilter && m.familyRating !== activeRatingFilter) return false;
+    if(activeRatingFilters.size && !activeRatingFilters.has(m.familyRating)) return false;
     return true;
   });
   const ordered = activeSeenSort ? sortBySeenDate(filtered, activeSeenSort) : filtered;
