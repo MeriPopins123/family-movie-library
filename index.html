@@ -621,6 +621,7 @@
 <div class="chip-row" id="runtimeChips"></div>
 <div class="chip-row" id="recencyChips"></div>
 <div class="chip-row" id="ageGroupChips"></div>
+<div class="chip-row" id="languageChips"></div>
 
 <main>
   <div class="grid" id="grid"></div>
@@ -687,6 +688,18 @@
           <option value="Young">Young</option>
           <option value="Teens">Teens</option>
           <option value="Adults">Adults</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="languageInput">Language</label>
+        <select id="languageInput">
+          <option value="">Not set</option>
+          <option value="English">English</option>
+          <option value="Russian">Russian</option>
+          <option value="Hebrew">Hebrew</option>
+          <option value="French">French</option>
+          <option value="Silent">Silent</option>
+          <option value="Other">Other</option>
         </select>
       </div>
       <div class="field">
@@ -768,6 +781,7 @@ let activePlatformFilter = null;
 let activePersonFilter = null;
 let activeRuntimeFilter = null;
 let activeAgeGroupFilter = null;
+let activeLanguageFilter = null;
 let activeSeenSort = null; // null | "desc" (newest seen first) | "asc" (oldest seen first)
 
 const RUNTIME_BUCKETS = ["Short (3–15 min)", "Medium (16–45 min)", "Long (46+ min)"];
@@ -790,6 +804,7 @@ function sortBySeenDate(list, mode){
 }
 
 const AGE_GROUPS = ["Very young", "Young", "Teens", "Adults"];
+const LANGUAGES = ["English", "Russian", "Hebrew", "French", "Silent", "Other"];
 const CERTIFICATION_TO_AGE_GROUP = {
   "G": "Very young", "TV-Y": "Very young", "TV-G": "Very young", "TV-Y7": "Very young",
   "PG": "Young", "TV-Y7-FV": "Young", "TV-PG": "Young",
@@ -1076,6 +1091,15 @@ function renderChips(){
     chip.onclick = () => { activeAgeGroupFilter = activeAgeGroupFilter===g ? null : g; render(); };
     ageGroupChips.appendChild(chip);
   });
+
+  const languageChips = document.getElementById("languageChips");
+  languageChips.innerHTML = "";
+  languageChips.appendChild(el("span","chip-group-label","Language"));
+  LANGUAGES.forEach(l => {
+    const chip = el("button","chip"+(activeLanguageFilter===l?" active":""), l);
+    chip.onclick = () => { activeLanguageFilter = activeLanguageFilter===l ? null : l; render(); };
+    languageChips.appendChild(chip);
+  });
 }
 
 function render(){
@@ -1091,6 +1115,7 @@ function render(){
     if(activePersonFilter && m.recommendedBy !== activePersonFilter) return false;
     if(activeRuntimeFilter && runtimeBucket(m.runtimeMinutes) !== activeRuntimeFilter) return false;
     if(activeAgeGroupFilter && m.ageGroup !== activeAgeGroupFilter) return false;
+    if(activeLanguageFilter && m.language !== activeLanguageFilter) return false;
     return true;
   });
   const ordered = activeSeenSort ? sortBySeenDate(filtered, activeSeenSort) : filtered;
@@ -1150,9 +1175,10 @@ function buildCard(m){
   if(m.lastWatched){
     info.appendChild(el("div","meta-line","Last watched " + escapeHtml(formatDate(m.lastWatched))));
   }
-  if((m.platforms && m.platforms.length) || m.ageGroup){
+  if((m.platforms && m.platforms.length) || m.ageGroup || m.language){
     const badges = el("div","badges");
     if(m.ageGroup) badges.appendChild(el("span","badge age-badge", escapeHtml(m.ageGroup)));
+    if(m.language) badges.appendChild(el("span","badge age-badge", escapeHtml(m.language)));
     (m.platforms||[]).forEach(p => badges.appendChild(el("span","badge", escapeHtml(p))));
     info.appendChild(badges);
   }
@@ -1373,6 +1399,7 @@ function openEditModal(m){
   document.getElementById("runtimeInput").value = m.runtimeMinutes || "";
   document.getElementById("lastWatchedInput").value = m.lastWatched || "";
   document.getElementById("ageGroupInput").value = m.ageGroup || "";
+  document.getElementById("languageInput").value = m.language || "";
   document.getElementById("notesInput").value = m.notes || "";
   document.querySelectorAll('#platformCheckboxes input').forEach(cb => {
     cb.checked = (m.platforms || []).includes(cb.value);
@@ -1410,6 +1437,7 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
   const manualRuntimeRaw = document.getElementById("runtimeInput").value.trim();
   const lastWatched = document.getElementById("lastWatchedInput").value || null;
   const manualAgeGroup = document.getElementById("ageGroupInput").value || "";
+  const language = document.getElementById("languageInput").value || null;
 
   const ytError = document.getElementById("ytError");
   ytError.textContent = "";
@@ -1441,10 +1469,10 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
   if(editingMovieId){
     const idx = movies.findIndex(x => x.id === editingMovieId);
     if(idx !== -1){
-      movies[idx] = { id: editingMovieId, title, youtubeId, websiteWatchUrl, platforms, recommendedBy: who, notes, runtimeMinutes, lastWatched, ageGroup, tmdb };
+      movies[idx] = { id: editingMovieId, title, youtubeId, websiteWatchUrl, platforms, recommendedBy: who, notes, runtimeMinutes, lastWatched, ageGroup, language, tmdb };
     }
   }else{
-    movies.push({ id: uid(), title, youtubeId, websiteWatchUrl, platforms, recommendedBy: who, notes, runtimeMinutes, lastWatched, ageGroup, tmdb });
+    movies.push({ id: uid(), title, youtubeId, websiteWatchUrl, platforms, recommendedBy: who, notes, runtimeMinutes, lastWatched, ageGroup, language, tmdb });
   }
   await saveMovies();
   closeAddModal();
