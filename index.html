@@ -909,20 +909,6 @@ const LANGUAGES = ["English", "Russian", "Hebrew", "French", "Silent", "Other"];
 const FAMILY_RATINGS = [1,2,3,4,5,6,7,8,9,10];
 function starLabel(n){ return "&#9733;".repeat(n) + "&#9734;".repeat(10-n); }
 
-function creditsBits(m){
-  const bits = [];
-  const director = (m.tmdb && m.tmdb.director && m.tmdb.director.name) || (m.manualCredits && m.manualCredits.director);
-  const studio = (m.tmdb && m.tmdb.studio && m.tmdb.studio.name) || (m.manualCredits && m.manualCredits.studio);
-  const writers = (m.manualCredits && m.manualCredits.writers) || (m.tmdb && m.tmdb.writers && m.tmdb.writers.length ? m.tmdb.writers.map(w => w.name).join(", ") : null);
-  const actors = (m.manualCredits && m.manualCredits.actors) || (m.tmdb && m.tmdb.cast && m.tmdb.cast.length ? m.tmdb.cast.map(c => c.name).join(", ") : null);
-  const year = (m.manualCredits && m.manualCredits.year) || (m.tmdb && m.tmdb.year);
-  if(director) bits.push("Dir. " + director);
-  if(studio) bits.push(studio);
-  if(writers) bits.push("Written by " + writers);
-  if(actors) bits.push("Starring " + actors);
-  if(year) bits.push(year);
-  return bits;
-}
 const CERTIFICATION_TO_AGE_GROUP = {
   "G": "Very young", "TV-Y": "Very young", "TV-G": "Very young", "TV-Y7": "Very young",
   "PG": "Young", "TV-Y7-FV": "Young", "TV-PG": "Young",
@@ -1312,11 +1298,8 @@ function buildCard(m){
   }else if(m.recommendedBy){
     info.appendChild(el("div","meta-line","RECOMMENDED BY " + escapeHtml(m.recommendedBy).toUpperCase()));
   }
-  const creditBits = creditsBits(m);
-  if(creditBits.length || m.runtimeMinutes){
-    const bits = [...creditBits];
-    if(m.runtimeMinutes) bits.push(m.runtimeMinutes + " min");
-    info.appendChild(el("div","meta-line", escapeHtml(bits.join(" · "))));
+  if(m.runtimeMinutes){
+    info.appendChild(el("div","meta-line", m.runtimeMinutes + " min"));
   }
   if(m.lastWatched){
     info.appendChild(el("div","meta-line","Last watched " + escapeHtml(formatDate(m.lastWatched))));
