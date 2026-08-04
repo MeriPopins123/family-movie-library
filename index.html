@@ -283,6 +283,11 @@
     color: var(--muted);
     letter-spacing: 0.4px;
   }
+  .meta-line.rating-line{
+    color: var(--gold);
+    font-size: 0.85rem;
+    letter-spacing: 1px;
+  }
   .badges{
     display:flex; flex-wrap:wrap; gap:6px;
     margin: 2px 0;
@@ -622,6 +627,7 @@
 <div class="chip-row" id="recencyChips"></div>
 <div class="chip-row" id="ageGroupChips"></div>
 <div class="chip-row" id="languageChips"></div>
+<div class="chip-row" id="ratingChips"></div>
 
 <main>
   <div class="grid" id="grid"></div>
@@ -703,12 +709,61 @@
         </select>
       </div>
       <div class="field">
+        <label for="familyRatingInput">Family rating</label>
+        <select id="familyRatingInput">
+          <option value="">Not rated</option>
+          <option value="1">&#9733; 1</option>
+          <option value="2">&#9733; 2</option>
+          <option value="3">&#9733; 3</option>
+          <option value="4">&#9733; 4</option>
+          <option value="5">&#9733; 5</option>
+          <option value="6">&#9733; 6</option>
+          <option value="7">&#9733; 7</option>
+          <option value="8">&#9733; 8</option>
+          <option value="9">&#9733; 9</option>
+          <option value="10">&#9733; 10</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="notesInput">Notes (optional)</label>
         <textarea id="notesInput" placeholder="Why the family loves it, age range, etc."></textarea>
+      </div>
+      <div class="field">
+        <button type="button" class="btn-secondary" id="openDetailsBtn" style="width:100%;">&#127916; Director, studio &amp; more</button>
       </div>
       <div class="form-actions">
         <button type="button" class="btn-secondary" id="cancelAddBtn">Cancel</button>
         <button type="submit" class="btn-primary" id="addSubmitBtn">Save to library</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Extra details modal (director, studio, writers, year) -->
+<div class="overlay" id="detailsOverlay" hidden>
+  <div class="modal" role="dialog" aria-labelledby="detailsTitle" aria-modal="true">
+    <button class="modal-close" id="closeDetailsBtn" aria-label="Close">&times;</button>
+    <h2 id="detailsTitle">More Details</h2>
+    <p class="hint">Optional &mdash; fills in automatically when a TMDB key is set, but you can enter it by hand too.</p>
+    <form class="add-form" id="detailsForm">
+      <div class="field">
+        <label for="directorInput">Director</label>
+        <input type="text" id="directorInput" placeholder="e.g. Byron Howard">
+      </div>
+      <div class="field">
+        <label for="studioInput">Studio</label>
+        <input type="text" id="studioInput" placeholder="e.g. Walt Disney Animation Studios">
+      </div>
+      <div class="field">
+        <label for="writersInput">Writers</label>
+        <input type="text" id="writersInput" placeholder="e.g. Jared Bush, Charise Castro Smith">
+      </div>
+      <div class="field">
+        <label for="yearInput">Release year</label>
+        <input type="text" inputmode="numeric" id="yearInput" placeholder="e.g. 2021">
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn-primary" id="saveDetailsBtn">Done</button>
       </div>
     </form>
   </div>
@@ -757,7 +812,7 @@
 </div>
 
 <script>
-const PLATFORMS = ["YouTube","Website","Prime Video","Netflix","Disney+","Max","Hulu","Apple TV+","Peacock","Paramount+","Other"];
+const PLATFORMS = ["YouTube","Prime Video","Netflix","Website","Disney+","Hulu","Max","Apple TV+","Peacock","Paramount+","Other"];
 const LIKED_BY_OPTIONS = ["Children A","Children E","Mama","Papa","Others"];
 
 const SEED_MOVIES = [
@@ -783,13 +838,14 @@ let activePersonFilter = null;
 let activeRuntimeFilter = null;
 let activeAgeGroupFilter = null;
 let activeLanguageFilter = null;
+let activeRatingFilter = null;
 let activeSeenSort = null; // null | "desc" (newest seen first) | "asc" (oldest seen first)
 
-const RUNTIME_BUCKETS = ["Short (3–15 min)", "Medium (16–45 min)", "Long (46+ min)"];
+const RUNTIME_BUCKETS = ["Short (1–20 min)", "Medium (21–60 min)", "Full feature (60+ min)"];
 function runtimeBucket(minutes){
   if(minutes == null || isNaN(minutes)) return null;
-  if(minutes <= 15) return RUNTIME_BUCKETS[0];
-  if(minutes <= 45) return RUNTIME_BUCKETS[1];
+  if(minutes <= 20) return RUNTIME_BUCKETS[0];
+  if(minutes <= 60) return RUNTIME_BUCKETS[1];
   return RUNTIME_BUCKETS[2];
 }
 
@@ -806,6 +862,21 @@ function sortBySeenDate(list, mode){
 
 const AGE_GROUPS = ["Very young", "Young", "Teens", "Adults"];
 const LANGUAGES = ["English", "Russian", "Hebrew", "French", "Silent", "Other"];
+const FAMILY_RATINGS = [1,2,3,4,5,6,7,8,9,10];
+function starLabel(n){ return "&#9733;".repeat(n) + "&#9734;".repeat(10-n); }
+
+function creditsBits(m){
+  const bits = [];
+  const director = (m.tmdb && m.tmdb.director && m.tmdb.director.name) || (m.manualCredits && m.manualCredits.director);
+  const studio = (m.tmdb && m.tmdb.studio && m.tmdb.studio.name) || (m.manualCredits && m.manualCredits.studio);
+  const writers = (m.manualCredits && m.manualCredits.writers) || (m.tmdb && m.tmdb.writers && m.tmdb.writers.length ? m.tmdb.writers.map(w => w.name).join(", ") : null);
+  const year = (m.manualCredits && m.manualCredits.year) || (m.tmdb && m.tmdb.year);
+  if(director) bits.push("Dir. " + director);
+  if(studio) bits.push(studio);
+  if(writers) bits.push("Written by " + writers);
+  if(year) bits.push(year);
+  return bits;
+}
 const CERTIFICATION_TO_AGE_GROUP = {
   "G": "Very young", "TV-Y": "Very young", "TV-G": "Very young", "TV-Y7": "Very young",
   "PG": "Young", "TV-Y7-FV": "Young", "TV-PG": "Young",
@@ -1037,21 +1108,14 @@ function el(tag, cls, html){
 }
 
 function renderChips(){
-  const platformSet = new Set();
-  movies.forEach(m => {
-    (m.platforms||[]).forEach(p => platformSet.add(p));
-  });
-
   const platformChips = document.getElementById("platformChips");
   platformChips.innerHTML = "";
-  if(platformSet.size){
-    platformChips.appendChild(el("span","chip-group-label","Platform"));
-    [...platformSet].sort().forEach(p => {
-      const chip = el("button","chip"+(activePlatformFilter===p?" active":""), p);
-      chip.onclick = () => { activePlatformFilter = activePlatformFilter===p ? null : p; render(); };
-      platformChips.appendChild(chip);
-    });
-  }
+  platformChips.appendChild(el("span","chip-group-label","Platform"));
+  PLATFORMS.forEach(p => {
+    const chip = el("button","chip"+(activePlatformFilter===p?" active":""), p);
+    chip.onclick = () => { activePlatformFilter = activePlatformFilter===p ? null : p; render(); };
+    platformChips.appendChild(chip);
+  });
 
   const peopleChips = document.getElementById("peopleChips");
   peopleChips.innerHTML = "";
@@ -1097,6 +1161,15 @@ function renderChips(){
     chip.onclick = () => { activeLanguageFilter = activeLanguageFilter===l ? null : l; render(); };
     languageChips.appendChild(chip);
   });
+
+  const ratingChips = document.getElementById("ratingChips");
+  ratingChips.innerHTML = "";
+  ratingChips.appendChild(el("span","chip-group-label","Family rating"));
+  FAMILY_RATINGS.forEach(n => {
+    const chip = el("button","chip"+(activeRatingFilter===n?" active":""), n + "&#9733;");
+    chip.onclick = () => { activeRatingFilter = activeRatingFilter===n ? null : n; render(); };
+    ratingChips.appendChild(chip);
+  });
 }
 
 function render(){
@@ -1113,6 +1186,7 @@ function render(){
     if(activeRuntimeFilter && runtimeBucket(m.runtimeMinutes) !== activeRuntimeFilter) return false;
     if(activeAgeGroupFilter && m.ageGroup !== activeAgeGroupFilter) return false;
     if(activeLanguageFilter && m.language !== activeLanguageFilter) return false;
+    if(activeRatingFilter && m.familyRating !== activeRatingFilter) return false;
     return true;
   });
   const ordered = activeSeenSort ? sortBySeenDate(filtered, activeSeenSort) : filtered;
@@ -1159,17 +1233,19 @@ function buildCard(m){
 
   const info = el("div","ticket-info");
   info.appendChild(el("h3", null, escapeHtml(m.title)));
+  if(m.familyRating){
+    info.appendChild(el("div","meta-line rating-line", starLabel(m.familyRating)));
+  }
   if(m.likedBy && m.likedBy.length){
     info.appendChild(el("div","meta-line","LIKED BY " + escapeHtml(m.likedBy.join(", ")).toUpperCase()));
   }else if(m.recommendedBy){
     info.appendChild(el("div","meta-line","RECOMMENDED BY " + escapeHtml(m.recommendedBy).toUpperCase()));
   }
-  if(m.tmdb && (m.tmdb.director || m.tmdb.studio) || m.runtimeMinutes){
-    const bits = [];
-    if(m.tmdb && m.tmdb.director) bits.push("Dir. " + m.tmdb.director.name);
-    if(m.tmdb && m.tmdb.studio) bits.push(m.tmdb.studio.name);
+  const creditBits = creditsBits(m);
+  if(creditBits.length || m.runtimeMinutes){
+    const bits = [...creditBits];
     if(m.runtimeMinutes) bits.push(m.runtimeMinutes + " min");
-    if(bits.length) info.appendChild(el("div","meta-line", escapeHtml(bits.join(" · "))));
+    info.appendChild(el("div","meta-line", escapeHtml(bits.join(" · "))));
   }
   if(m.lastWatched){
     info.appendChild(el("div","meta-line","Last watched " + escapeHtml(formatDate(m.lastWatched))));
@@ -1406,9 +1482,11 @@ function buildLikedByCheckboxes(){
 }
 
 let editingMovieId = null;
+let draftManualCredits = { director: "", studio: "", writers: "", year: "" };
 
 function openAddModal(){
   editingMovieId = null;
+  draftManualCredits = { director: "", studio: "", writers: "", year: "" };
   document.getElementById("addForm").reset();
   document.getElementById("ytError").textContent = "";
   document.getElementById("addTitle").textContent = "Add a Movie";
@@ -1419,6 +1497,7 @@ function openAddModal(){
 
 function openEditModal(m){
   editingMovieId = m.id;
+  draftManualCredits = Object.assign({ director: "", studio: "", writers: "", year: "" }, m.manualCredits || {});
   document.getElementById("addForm").reset();
   document.getElementById("ytError").textContent = "";
   document.getElementById("addTitle").textContent = "Edit Movie";
@@ -1430,6 +1509,7 @@ function openEditModal(m){
   document.getElementById("lastWatchedInput").value = m.lastWatched || "";
   document.getElementById("ageGroupInput").value = m.ageGroup || "";
   document.getElementById("languageInput").value = m.language || "";
+  document.getElementById("familyRatingInput").value = m.familyRating || "";
   document.getElementById("notesInput").value = m.notes || "";
   document.querySelectorAll('#platformCheckboxes input').forEach(cb => {
     cb.checked = (m.platforms || []).includes(cb.value);
@@ -1455,7 +1535,29 @@ document.getElementById("addOverlay").addEventListener("click", (e) => { if(e.ta
 document.getElementById("playerOverlay").addEventListener("click", (e) => { if(e.target.id==="playerOverlay") closePlayer(); });
 document.getElementById("watchOverlay").addEventListener("click", (e) => { if(e.target.id==="watchOverlay") closeWatchOptions(); });
 document.addEventListener("keydown", (e) => {
-  if(e.key === "Escape"){ closeAddModal(); closePlayer(); closeSettings(); closeWatchOptions(); }
+  if(e.key === "Escape"){ closeAddModal(); closePlayer(); closeSettings(); closeWatchOptions(); closeDetails(); }
+});
+
+function openDetailsModal(){
+  document.getElementById("directorInput").value = draftManualCredits.director || "";
+  document.getElementById("studioInput").value = draftManualCredits.studio || "";
+  document.getElementById("writersInput").value = draftManualCredits.writers || "";
+  document.getElementById("yearInput").value = draftManualCredits.year || "";
+  document.getElementById("detailsOverlay").hidden = false;
+}
+function closeDetails(){ document.getElementById("detailsOverlay").hidden = true; }
+document.getElementById("openDetailsBtn").onclick = openDetailsModal;
+document.getElementById("closeDetailsBtn").onclick = closeDetails;
+document.getElementById("detailsOverlay").addEventListener("click", (e) => { if(e.target.id==="detailsOverlay") closeDetails(); });
+document.getElementById("detailsForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  draftManualCredits = {
+    director: document.getElementById("directorInput").value.trim(),
+    studio: document.getElementById("studioInput").value.trim(),
+    writers: document.getElementById("writersInput").value.trim(),
+    year: document.getElementById("yearInput").value.trim()
+  };
+  closeDetails();
 });
 document.getElementById("searchInput").addEventListener("input", render);
 
@@ -1471,6 +1573,10 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
   const lastWatched = document.getElementById("lastWatchedInput").value || null;
   const manualAgeGroup = document.getElementById("ageGroupInput").value || "";
   const language = document.getElementById("languageInput").value || null;
+  const familyRatingRaw = document.getElementById("familyRatingInput").value;
+  const familyRating = familyRatingRaw ? parseInt(familyRatingRaw, 10) : null;
+  const hasManualCredits = draftManualCredits.director || draftManualCredits.studio || draftManualCredits.writers || draftManualCredits.year;
+  const manualCredits = hasManualCredits ? { ...draftManualCredits } : null;
 
   const ytError = document.getElementById("ytError");
   ytError.textContent = "";
@@ -1502,10 +1608,10 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
   if(editingMovieId){
     const idx = movies.findIndex(x => x.id === editingMovieId);
     if(idx !== -1){
-      movies[idx] = { id: editingMovieId, title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroup, language, tmdb };
+      movies[idx] = { id: editingMovieId, title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroup, language, familyRating, manualCredits, tmdb };
     }
   }else{
-    movies.unshift({ id: uid(), title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroup, language, tmdb });
+    movies.unshift({ id: uid(), title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroup, language, familyRating, manualCredits, tmdb });
   }
   await saveMovies();
   closeAddModal();
