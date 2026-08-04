@@ -1329,7 +1329,9 @@ function buildCard(m){
   editBtn.onclick = () => openEditModal(m);
   btnGroup.appendChild(editBtn);
   const del = el("button","delete-btn","Remove");
-  del.onclick = () => removeMovie(m.id);
+  del.onclick = () => {
+    if(confirm(`Remove "${m.title}" from the library? This can't be undone.`)) removeMovie(m.id);
+  };
   btnGroup.appendChild(del);
   actions.appendChild(btnGroup);
   info.appendChild(actions);
