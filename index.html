@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Our Family Movie Library</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -197,42 +198,60 @@
   .ticket{
     background: var(--card);
     border: 1px solid var(--card-edge);
-    border-radius: var(--radius);
+    border-radius: 5px;
     overflow: hidden;
     display:flex;
     flex-direction: column;
     position: relative;
+    padding-left: 9px;
+    box-shadow: 4px 5px 0 rgba(0,0,0,0.28), 10px 12px 22px rgba(0,0,0,0.35);
     transition: transform 0.18s ease, box-shadow 0.18s ease;
   }
-  .ticket:hover{ transform: translateY(-3px); box-shadow: 0 14px 28px rgba(0,0,0,0.35); }
+  .ticket::before{
+    content:"";
+    position:absolute;
+    left:0; top:0; bottom:0;
+    width:9px;
+    background: linear-gradient(90deg, rgba(0,0,0,0.6), rgba(0,0,0,0.15) 45%, rgba(255,255,255,0.07) 60%, rgba(0,0,0,0.4));
+    border-right: 1px solid rgba(0,0,0,0.45);
+    z-index: 2;
+  }
+  .ticket:hover{ transform: translate(-1px,-4px); box-shadow: 5px 7px 0 rgba(0,0,0,0.3), 12px 16px 28px rgba(0,0,0,0.4); }
 
   .thumb-btn{
     all: unset;
     cursor: pointer;
     display:block;
     position:relative;
-    aspect-ratio: 16/9;
+    aspect-ratio: 2/3;
     background: #000;
+    overflow: hidden;
   }
-  .thumb-btn.poster-ratio{ aspect-ratio: 2/3; cursor: default; }
-  .thumb-btn.poster-ratio.has-trailer{ cursor: pointer; }
   .thumb-btn img{
     width:100%; height:100%; object-fit:cover; display:block;
-    opacity: 0.9;
+    transition: transform 0.25s ease, filter 0.25s ease;
   }
-  .thumb-btn .play{
+  .thumb-btn::after{
+    content:"";
     position:absolute; inset:0;
-    display:flex; align-items:center; justify-content:center;
+    background: linear-gradient(115deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.03) 18%, transparent 32%);
+    pointer-events:none;
   }
-  .thumb-btn .play span{
-    width: 52px; height:52px;
-    border-radius:50%;
-    background: rgba(18,20,42,0.75);
-    border: 2px solid var(--gold);
-    display:flex; align-items:center; justify-content:center;
+  .thumb-btn:hover img{ transform: scale(1.035); filter: brightness(1.08); }
+  .thumb-btn .watch-hint{
+    position:absolute; left:0; right:0; bottom:0;
+    padding: 9px 10px 8px;
+    background: linear-gradient(0deg, rgba(0,0,0,0.88), transparent);
     color: var(--gold);
-    font-size: 1.1rem;
+    font-size: 0.72rem;
+    font-weight:700;
+    font-family:'Nunito', sans-serif;
+    opacity:0;
+    transform: translateY(4px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    text-align:center;
   }
+  .thumb-btn:hover .watch-hint{ opacity:1; transform:translateY(0); }
   .thumb-btn.no-video{
     display:flex; align-items:center; justify-content:center;
     color: var(--muted);
@@ -242,23 +261,7 @@
     padding: 10px;
   }
 
-  /* perforation divider - signature element */
-  .perforation{
-    position:relative;
-    height: 0;
-    border-top: 2px dashed var(--card-edge);
-    margin: 0 14px;
-  }
-  .perforation::before, .perforation::after{
-    content:"";
-    position:absolute;
-    top: -8px;
-    width:16px; height:16px;
-    border-radius:50%;
-    background: var(--bg);
-  }
-  .perforation::before{ left: -22px; }
-  .perforation::after{ right: -22px; }
+  .ticket-info{ border-top: 1px solid var(--card-edge); }
 
   .ticket-info{
     padding: 14px 16px 16px;
@@ -305,6 +308,12 @@
     align-items:center;
     margin-top: auto;
     padding-top: 6px;
+    gap: 10px;
+  }
+  .ticket-actions-buttons{
+    display:flex;
+    gap: 10px;
+    flex-shrink: 0;
   }
   .justwatch-link{
     font-size: 0.78rem;
@@ -313,7 +322,7 @@
     text-decoration:none;
   }
   .justwatch-link:hover{ text-decoration: underline; }
-  .delete-btn{
+  .delete-btn, .edit-btn{
     background:none; border:none;
     color: var(--muted);
     cursor:pointer;
@@ -322,6 +331,7 @@
     opacity: 0.6;
   }
   .delete-btn:hover{ color: var(--red); opacity:1; }
+  .edit-btn:hover{ color: var(--gold); opacity:1; }
 
   /* ---------- Empty state ---------- */
   .empty-state{
@@ -414,6 +424,23 @@
     font-size: 0.9rem;
     color-scheme: dark;
   }
+  .field select{
+    width:100%;
+    padding: 9px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--card-edge);
+    background: rgba(251,243,231,0.04);
+    color: var(--cream);
+    font-family:'Nunito', sans-serif;
+    font-size: 0.9rem;
+    color-scheme: dark;
+  }
+  .field select option{ background: var(--card); color: var(--cream); }
+  .age-badge{
+    background: rgba(242,193,78,0.15);
+    border-color: rgba(242,193,78,0.4);
+    color: var(--gold);
+  }
   .field-row{
     display:flex;
     gap: 12px;
@@ -463,6 +490,46 @@
   }
 
   .error-text{ color: var(--red); font-size: 0.8rem; min-height: 1em; margin:0; }
+
+  .watch-options-list{
+    display:flex;
+    flex-direction:column;
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .watch-option-btn{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    width:100%;
+    padding: 13px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--card-edge);
+    background: rgba(251,243,231,0.04);
+    color: var(--cream);
+    text-decoration:none;
+    font-family:'Nunito', sans-serif;
+    font-weight:700;
+    font-size: 0.95rem;
+    cursor:pointer;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .watch-option-btn:hover{ border-color: var(--gold); background: rgba(242,193,78,0.08); }
+  .watch-option-primary{
+    background: var(--gold);
+    border-color: var(--gold);
+    color: #241d09;
+  }
+  .watch-option-primary:hover{ background: var(--gold); filter: brightness(1.05); }
+  .watch-option-primary .arrow{ color: #241d09; }
+  .watch-option-btn .arrow{ color: var(--gold); }
+  .watch-option-empty{
+    color: var(--muted);
+    font-size: 0.88rem;
+    text-align:center;
+    padding: 6px 0 4px;
+  }
 
   /* ---------- Suggestions ---------- */
   .suggestions{
@@ -553,6 +620,7 @@
 <div class="chip-row" id="peopleChips"></div>
 <div class="chip-row" id="runtimeChips"></div>
 <div class="chip-row" id="recencyChips"></div>
+<div class="chip-row" id="ageGroupChips"></div>
 
 <main>
   <div class="grid" id="grid"></div>
@@ -590,8 +658,12 @@
         <p class="error-text" id="ytError"></p>
       </div>
       <div class="field">
-        <label>Where you watch it</label>
+        <label>Where you watch it (leave blank to auto-detect)</label>
         <div class="platform-grid" id="platformCheckboxes"></div>
+      </div>
+      <div class="field">
+        <label for="websiteUrlInput">Website watch link (only needed if "Website" is checked above)</label>
+        <input type="text" id="websiteUrlInput" placeholder="https://example.com/watch/...">
       </div>
       <div class="field">
         <label for="whoInput">Recommended by</label>
@@ -608,12 +680,22 @@
         </div>
       </div>
       <div class="field">
+        <label for="ageGroupInput">Age group</label>
+        <select id="ageGroupInput">
+          <option value="">Auto-detect if possible / not set</option>
+          <option value="Very young">Very young</option>
+          <option value="Young">Young</option>
+          <option value="Teens">Teens</option>
+          <option value="Adults">Adults</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="notesInput">Notes (optional)</label>
         <textarea id="notesInput" placeholder="Why the family loves it, age range, etc."></textarea>
       </div>
       <div class="form-actions">
         <button type="button" class="btn-secondary" id="cancelAddBtn">Cancel</button>
-        <button type="submit" class="btn-primary">Save to library</button>
+        <button type="submit" class="btn-primary" id="addSubmitBtn">Save to library</button>
       </div>
     </form>
   </div>
@@ -643,6 +725,15 @@
   </div>
 </div>
 
+<!-- Watch options modal -->
+<div class="overlay" id="watchOverlay" hidden>
+  <div class="modal" role="dialog" aria-labelledby="watchTitle" aria-modal="true">
+    <button class="modal-close" id="closeWatchBtn" aria-label="Close">&times;</button>
+    <h2 id="watchTitle">Watch</h2>
+    <div id="watchOptionsList" class="watch-options-list"></div>
+  </div>
+</div>
+
 <!-- Player modal -->
 <div class="overlay" id="playerOverlay" hidden>
   <div class="modal player-modal" role="dialog" aria-modal="true">
@@ -653,22 +744,22 @@
 </div>
 
 <script>
-const PLATFORMS = ["Netflix","Prime Video","Disney+","Max","Hulu","Apple TV+","Peacock","Paramount+","Other"];
+const PLATFORMS = ["YouTube","Website","Prime Video","Netflix","Disney+","Max","Hulu","Apple TV+","Peacock","Paramount+","Other"];
 
 const SEED_MOVIES = [
-  { id: "seed1", title: "Encanto", youtubeId: "aUts14xyjHg", platforms: ["Disney+"], recommendedBy: "Everyone", notes: "Musical, magical realism, great for family movie night.", runtimeMinutes: 102, lastWatched: "2026-07-20" },
-  { id: "seed2", title: "Toy Story 4", youtubeId: "wmiIUN-7qhE", platforms: ["Disney+"], recommendedBy: "Kids", notes: "Woody, Buzz, and a spork named Forky.", runtimeMinutes: 100, lastWatched: "2025-01-15" },
-  { id: "seed3", title: "Inside Out 2", youtubeId: "UJps543CqLM", platforms: ["Disney+","Max"], recommendedBy: "Mom", notes: "Riley's emotions get complicated as a teenager.", runtimeMinutes: 96, lastWatched: "2026-06-10" }
+  { id: "seed1", title: "Encanto", youtubeId: "aUts14xyjHg", platforms: ["Disney+"], recommendedBy: "Everyone", notes: "Musical, magical realism, great for family movie night.", runtimeMinutes: 102, lastWatched: "2026-07-20", ageGroup: "Young" },
+  { id: "seed2", title: "Toy Story 4", youtubeId: "wmiIUN-7qhE", platforms: ["Disney+"], recommendedBy: "Kids", notes: "Woody, Buzz, and a spork named Forky.", runtimeMinutes: 100, lastWatched: "2025-01-15", ageGroup: "Very young" },
+  { id: "seed3", title: "Inside Out 2", youtubeId: "UJps543CqLM", platforms: ["Disney+","Max"], recommendedBy: "Mom", notes: "Riley's emotions get complicated as a teenager.", runtimeMinutes: 96, lastWatched: "2026-06-10", ageGroup: "Young" }
 ];
 
 // ---- Paste your Firebase project config here (see setup instructions) ----
 const FIREBASE_CONFIG = {
-  apiKey: "PASTE_YOUR_FIREBASE_API_KEY_HERE",
-  authDomain: "PASTE_YOUR_PROJECT.firebaseapp.com",
-  projectId: "PASTE_YOUR_PROJECT_ID",
-  storageBucket: "PASTE_YOUR_PROJECT.appspot.com",
-  messagingSenderId: "PASTE_YOUR_SENDER_ID",
-  appId: "PASTE_YOUR_APP_ID"
+  apiKey: "AIzaSyBpOibZf19Fyvmq7JRjrvhnAb-Bb52E3y0",
+  authDomain: "family-movies-9db86.firebaseapp.com",
+  projectId: "family-movies-9db86",
+  storageBucket: "family-movies-9db86.firebasestorage.app",
+  messagingSenderId: "839111424530",
+  appId: "1:839111424530:web:27e416e859073491d336cb"
 };
 const CONFIG_IS_PLACEHOLDER = FIREBASE_CONFIG.apiKey === "PASTE_YOUR_FIREBASE_API_KEY_HERE";
 
@@ -676,24 +767,35 @@ let movies = [];
 let activePlatformFilter = null;
 let activePersonFilter = null;
 let activeRuntimeFilter = null;
-let activeRecencyFilter = null;
+let activeAgeGroupFilter = null;
+let activeSeenSort = null; // null | "desc" (newest seen first) | "asc" (oldest seen first)
 
-const RUNTIME_BUCKETS = ["Short (under 90 min)", "Medium (90–120 min)", "Long (over 2 hr)"];
+const RUNTIME_BUCKETS = ["Short (3–15 min)", "Medium (16–45 min)", "Long (46+ min)"];
 function runtimeBucket(minutes){
   if(minutes == null || isNaN(minutes)) return null;
-  if(minutes < 90) return RUNTIME_BUCKETS[0];
-  if(minutes <= 120) return RUNTIME_BUCKETS[1];
+  if(minutes <= 15) return RUNTIME_BUCKETS[0];
+  if(minutes <= 45) return RUNTIME_BUCKETS[1];
   return RUNTIME_BUCKETS[2];
 }
 
-const RECENCY_BUCKETS = ["Seen recently", "Seen long ago"];
-const RECENCY_THRESHOLD_DAYS = 60;
-function recencyBucket(lastWatched){
-  if(!lastWatched) return null;
-  const days = (Date.now() - new Date(lastWatched + "T00:00:00").getTime()) / 86400000;
-  if(isNaN(days)) return null;
-  return days <= RECENCY_THRESHOLD_DAYS ? RECENCY_BUCKETS[0] : RECENCY_BUCKETS[1];
+function sortBySeenDate(list, mode){
+  const withTime = (m) => m.lastWatched ? new Date(m.lastWatched + "T00:00:00").getTime() : null;
+  return [...list].sort((a,b) => {
+    const ta = withTime(a), tb = withTime(b);
+    if(ta === null && tb === null) return 0;
+    if(ta === null) return 1;   // undated movies sink to the bottom
+    if(tb === null) return -1;
+    return mode === "asc" ? ta - tb : tb - ta;
+  });
 }
+
+const AGE_GROUPS = ["Very young", "Young", "Teens", "Adults"];
+const CERTIFICATION_TO_AGE_GROUP = {
+  "G": "Very young", "TV-Y": "Very young", "TV-G": "Very young", "TV-Y7": "Very young",
+  "PG": "Young", "TV-Y7-FV": "Young", "TV-PG": "Young",
+  "PG-13": "Teens", "TV-14": "Teens",
+  "R": "Adults", "NC-17": "Adults", "TV-MA": "Adults"
+};
 
 function formatDate(iso){
   try{
@@ -724,13 +826,29 @@ async function tmdbFetch(path, params){
   return res.json();
 }
 
+const PROVIDER_NAME_MAP = [
+  { match: /netflix/i, platform: "Netflix" },
+  { match: /prime video|amazon/i, platform: "Prime Video" },
+  { match: /disney/i, platform: "Disney+" },
+  { match: /\bmax\b|hbo/i, platform: "Max" },
+  { match: /hulu/i, platform: "Hulu" },
+  { match: /apple tv/i, platform: "Apple TV+" },
+  { match: /peacock/i, platform: "Peacock" },
+  { match: /paramount/i, platform: "Paramount+" },
+  { match: /youtube/i, platform: "YouTube" }
+];
+function mapProviderName(name){
+  const hit = PROVIDER_NAME_MAP.find(entry => entry.match.test(name));
+  return hit ? hit.platform : null;
+}
+
 async function lookupTmdbMetadata(title){
   if(!TMDB_KEY) return null;
   try{
     const search = await tmdbFetch("/search/movie", { query: title });
     if(!search.results || !search.results.length) return null;
     const top = search.results[0];
-    const details = await tmdbFetch("/movie/" + top.id, { append_to_response: "credits" });
+    const details = await tmdbFetch("/movie/" + top.id, { append_to_response: "credits,release_dates,watch/providers" });
     const crew = (details.credits && details.credits.crew) || [];
     const directorObj = crew.find(c => c.job === "Director");
     const seenWriters = new Set();
@@ -741,6 +859,27 @@ async function lookupTmdbMetadata(title){
     const studio = (details.production_companies && details.production_companies[0])
       ? { id: details.production_companies[0].id, name: details.production_companies[0].name }
       : null;
+
+    let suggestedAgeGroup = null;
+    const releaseResults = (details.release_dates && details.release_dates.results) || [];
+    const usEntry = releaseResults.find(r => r.iso_3166_1 === "US") || releaseResults[0];
+    if(usEntry){
+      const withCert = (usEntry.release_dates || []).find(rd => rd.certification);
+      if(withCert) suggestedAgeGroup = CERTIFICATION_TO_AGE_GROUP[withCert.certification] || null;
+    }
+
+    let suggestedPlatforms = [];
+    let watchLink = null;
+    const watchProviders = details["watch/providers"] && details["watch/providers"].results;
+    const usProviders = watchProviders && watchProviders.US;
+    if(usProviders){
+      const buckets = [...(usProviders.flatrate||[]), ...(usProviders.free||[]), ...(usProviders.ads||[])];
+      const mapped = new Set();
+      buckets.forEach(p => { const mp = mapProviderName(p.provider_name); if(mp) mapped.add(mp); });
+      suggestedPlatforms = [...mapped];
+      watchLink = usProviders.link || null;
+    }
+
     return {
       id: top.id,
       year: (details.release_date || "").slice(0,4),
@@ -748,7 +887,10 @@ async function lookupTmdbMetadata(title){
       runtime: details.runtime || null,
       director: directorObj ? { id: directorObj.id, name: directorObj.name } : null,
       writers,
-      studio
+      studio,
+      suggestedAgeGroup,
+      suggestedPlatforms,
+      watchLink
     };
   }catch(e){
     console.error("TMDB lookup failed:", e);
@@ -881,15 +1023,9 @@ function el(tag, cls, html){
 function renderChips(){
   const platformSet = new Set();
   const peopleSet = new Set();
-  const runtimeSet = new Set();
-  const recencySet = new Set();
   movies.forEach(m => {
     (m.platforms||[]).forEach(p => platformSet.add(p));
     if(m.recommendedBy) peopleSet.add(m.recommendedBy);
-    const rb = runtimeBucket(m.runtimeMinutes);
-    if(rb) runtimeSet.add(rb);
-    const cb = recencyBucket(m.lastWatched);
-    if(cb) recencySet.add(cb);
   });
 
   const platformChips = document.getElementById("platformChips");
@@ -916,25 +1052,30 @@ function renderChips(){
 
   const runtimeChips = document.getElementById("runtimeChips");
   runtimeChips.innerHTML = "";
-  if(runtimeSet.size){
-    runtimeChips.appendChild(el("span","chip-group-label","Length"));
-    RUNTIME_BUCKETS.filter(b => runtimeSet.has(b)).forEach(b => {
-      const chip = el("button","chip"+(activeRuntimeFilter===b?" active":""), b);
-      chip.onclick = () => { activeRuntimeFilter = activeRuntimeFilter===b ? null : b; render(); };
-      runtimeChips.appendChild(chip);
-    });
-  }
+  runtimeChips.appendChild(el("span","chip-group-label","Length"));
+  RUNTIME_BUCKETS.forEach(b => {
+    const chip = el("button","chip"+(activeRuntimeFilter===b?" active":""), b);
+    chip.onclick = () => { activeRuntimeFilter = activeRuntimeFilter===b ? null : b; render(); };
+    runtimeChips.appendChild(chip);
+  });
 
   const recencyChips = document.getElementById("recencyChips");
   recencyChips.innerHTML = "";
-  if(recencySet.size){
-    recencyChips.appendChild(el("span","chip-group-label","Last watched"));
-    RECENCY_BUCKETS.filter(b => recencySet.has(b)).forEach(b => {
-      const chip = el("button","chip"+(activeRecencyFilter===b?" active":""), b);
-      chip.onclick = () => { activeRecencyFilter = activeRecencyFilter===b ? null : b; render(); };
-      recencyChips.appendChild(chip);
-    });
-  }
+  recencyChips.appendChild(el("span","chip-group-label","Organize by date seen"));
+  [["desc","Newest seen first"],["asc","Oldest seen first"]].forEach(([mode,label]) => {
+    const chip = el("button","chip"+(activeSeenSort===mode?" active":""), label);
+    chip.onclick = () => { activeSeenSort = activeSeenSort===mode ? null : mode; render(); };
+    recencyChips.appendChild(chip);
+  });
+
+  const ageGroupChips = document.getElementById("ageGroupChips");
+  ageGroupChips.innerHTML = "";
+  ageGroupChips.appendChild(el("span","chip-group-label","Age group"));
+  AGE_GROUPS.forEach(g => {
+    const chip = el("button","chip"+(activeAgeGroupFilter===g?" active":""), g);
+    chip.onclick = () => { activeAgeGroupFilter = activeAgeGroupFilter===g ? null : g; render(); };
+    ageGroupChips.appendChild(chip);
+  });
 }
 
 function render(){
@@ -949,12 +1090,13 @@ function render(){
     if(activePlatformFilter && !(m.platforms||[]).includes(activePlatformFilter)) return false;
     if(activePersonFilter && m.recommendedBy !== activePersonFilter) return false;
     if(activeRuntimeFilter && runtimeBucket(m.runtimeMinutes) !== activeRuntimeFilter) return false;
-    if(activeRecencyFilter && recencyBucket(m.lastWatched) !== activeRecencyFilter) return false;
+    if(activeAgeGroupFilter && m.ageGroup !== activeAgeGroupFilter) return false;
     return true;
   });
+  const ordered = activeSeenSort ? sortBySeenDate(filtered, activeSeenSort) : filtered;
 
   grid.innerHTML = "";
-  if(!filtered.length){
+  if(!ordered.length){
     empty.hidden = false;
     empty.querySelector("h2").textContent = movies.length ? "No matches" : "The marquee's empty";
     empty.querySelector("p").textContent = movies.length
@@ -964,7 +1106,7 @@ function render(){
   }
   empty.hidden = true;
 
-  filtered.forEach(m => grid.appendChild(buildCard(m)));
+  ordered.forEach(m => grid.appendChild(buildCard(m)));
 }
 
 function buildCard(m){
@@ -974,18 +1116,24 @@ function buildCard(m){
   const ytThumbUrl = m.youtubeId ? `https://img.youtube.com/vi/${m.youtubeId}/hqdefault.jpg` : null;
   const imgUrl = posterUrl || ytThumbUrl;
 
-  let thumb;
+  const platforms = m.platforms || [];
+  const isYoutubeWatch = platforms.includes("YouTube") && m.youtubeId;
+  const isWebsiteWatch = !isYoutubeWatch && platforms.includes("Website") && m.websiteWatchUrl;
+  const hintText = (isYoutubeWatch || isWebsiteWatch) ? "Watch now &rsaquo;" : "Watch options &rsaquo;";
+
+  const thumb = el("button","thumb-btn");
   if(imgUrl){
-    const cls = "thumb-btn" + (posterUrl ? " poster-ratio" : "") + (m.youtubeId ? " has-trailer" : "");
-    thumb = el(m.youtubeId ? "button" : "div", cls);
-    const playHtml = m.youtubeId ? `<span class="play"><span>&#9654;</span></span>` : "";
-    thumb.innerHTML = `<img src="${imgUrl}" alt="${escapeHtml(m.title)} cover" loading="lazy">${playHtml}`;
-    if(m.youtubeId) thumb.onclick = () => openPlayer(m);
+    thumb.innerHTML = `<img src="${imgUrl}" alt="${escapeHtml(m.title)} cover" loading="lazy"><span class="watch-hint">${hintText}</span>`;
   }else{
-    thumb = el("div","thumb-btn no-video","No cover or trailer yet");
+    thumb.classList.add("no-video");
+    thumb.textContent = "No cover yet";
   }
+  thumb.onclick = () => {
+    if(isYoutubeWatch) openPlayer(m);
+    else if(isWebsiteWatch) window.open(m.websiteWatchUrl, "_blank", "noopener,noreferrer");
+    else openWatchOptions(m);
+  };
   card.appendChild(thumb);
-  card.appendChild(el("div","perforation"));
 
   const info = el("div","ticket-info");
   info.appendChild(el("h3", null, escapeHtml(m.title)));
@@ -1002,9 +1150,10 @@ function buildCard(m){
   if(m.lastWatched){
     info.appendChild(el("div","meta-line","Last watched " + escapeHtml(formatDate(m.lastWatched))));
   }
-  if(m.platforms && m.platforms.length){
+  if((m.platforms && m.platforms.length) || m.ageGroup){
     const badges = el("div","badges");
-    m.platforms.forEach(p => badges.appendChild(el("span","badge", escapeHtml(p))));
+    if(m.ageGroup) badges.appendChild(el("span","badge age-badge", escapeHtml(m.ageGroup)));
+    (m.platforms||[]).forEach(p => badges.appendChild(el("span","badge", escapeHtml(p))));
     info.appendChild(badges);
   }
   if(m.notes){
@@ -1016,9 +1165,14 @@ function buildCard(m){
   jw.target = "_blank";
   jw.rel = "noopener noreferrer";
   actions.appendChild(jw);
+  const btnGroup = el("div","ticket-actions-buttons");
+  const editBtn = el("button","edit-btn","Edit");
+  editBtn.onclick = () => openEditModal(m);
+  btnGroup.appendChild(editBtn);
   const del = el("button","delete-btn","Remove");
   del.onclick = () => removeMovie(m.id);
-  actions.appendChild(del);
+  btnGroup.appendChild(del);
+  actions.appendChild(btnGroup);
   info.appendChild(actions);
 
   card.appendChild(info);
@@ -1037,10 +1191,80 @@ async function removeMovie(id){
   render();
 }
 
+const PLATFORM_SEARCH_URLS = {
+  "Netflix": "https://www.netflix.com/search?q=",
+  "Prime Video": "https://www.primevideo.com/search?phrase=",
+  "Disney+": "https://www.disneyplus.com/search?q=",
+  "Max": "https://www.max.com/search?q=",
+  "Hulu": "https://www.hulu.com/search?q=",
+  "Apple TV+": "https://tv.apple.com/search?term=",
+  "Peacock": "https://www.peacocktv.com/search?q=",
+  "Paramount+": "https://www.paramountplus.com/search?q=",
+  "YouTube": "https://www.youtube.com/results?search_query="
+};
+
+function openWatchOptions(m){
+  document.getElementById("watchTitle").textContent = m.title;
+  const list = document.getElementById("watchOptionsList");
+  list.innerHTML = "";
+  let hasOption = false;
+  const watchLink = m.tmdb && m.tmdb.watchLink;
+
+  if(watchLink){
+    hasOption = true;
+    const a = document.createElement("a");
+    a.className = "watch-option-btn watch-option-primary";
+    a.href = watchLink;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.innerHTML = `<span>&#9654; Watch now &mdash; direct links</span><span class="arrow">&rarr;</span>`;
+    list.appendChild(a);
+  }
+
+  if(m.youtubeId){
+    hasOption = true;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "watch-option-btn";
+    btn.innerHTML = `<span>&#9654; Watch trailer</span><span class="arrow">&rarr;</span>`;
+    btn.onclick = () => { closeWatchOptions(); openPlayer(m); };
+    list.appendChild(btn);
+  }
+
+  (m.platforms || []).forEach(p => {
+    hasOption = true;
+    const url = (PLATFORM_SEARCH_URLS[p] || "https://www.justwatch.com/us/search?q=") + encodeURIComponent(m.title);
+    const a = document.createElement("a");
+    a.className = "watch-option-btn";
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.innerHTML = `<span>Search ${escapeHtml(p)}</span><span class="arrow">&rarr;</span>`;
+    list.appendChild(a);
+  });
+
+  if(!hasOption){
+    list.appendChild(el("p","watch-option-empty","No trailer or streaming tags yet — edit this movie to add some."));
+  }
+
+  if(!watchLink){
+    const jw = document.createElement("a");
+    jw.className = "watch-option-btn";
+    jw.href = "https://www.justwatch.com/us/search?q=" + encodeURIComponent(m.title);
+    jw.target = "_blank";
+    jw.rel = "noopener noreferrer";
+    jw.innerHTML = `<span>Find it anywhere (JustWatch)</span><span class="arrow">&rarr;</span>`;
+    list.appendChild(jw);
+  }
+
+  document.getElementById("watchOverlay").hidden = false;
+}
+function closeWatchOptions(){ document.getElementById("watchOverlay").hidden = true; }
+
 function openPlayer(m){
   document.getElementById("playerContainer").innerHTML =
     `<iframe src="https://www.youtube-nocookie.com/embed/${m.youtubeId}?rel=0&autoplay=1"
-     title="${escapeHtml(m.title)} trailer" allow="accelerometer; autoplay; encrypted-media; gyroscope" allowfullscreen></iframe>`;
+     title="${escapeHtml(m.title)} trailer" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; encrypted-media; gyroscope" allowfullscreen></iframe>`;
   document.getElementById("playerCaption").textContent = m.title;
   document.getElementById("playerOverlay").hidden = false;
 }
@@ -1124,22 +1348,54 @@ function buildPlatformCheckboxes(){
   });
 }
 
+let editingMovieId = null;
+
 function openAddModal(){
+  editingMovieId = null;
   document.getElementById("addForm").reset();
   document.getElementById("ytError").textContent = "";
+  document.getElementById("addTitle").textContent = "Add a Movie";
+  document.getElementById("addSubmitBtn").textContent = "Save to library";
   document.getElementById("addOverlay").hidden = false;
   document.getElementById("titleInput").focus();
 }
-function closeAddModal(){ document.getElementById("addOverlay").hidden = true; }
+
+function openEditModal(m){
+  editingMovieId = m.id;
+  document.getElementById("addForm").reset();
+  document.getElementById("ytError").textContent = "";
+  document.getElementById("addTitle").textContent = "Edit Movie";
+  document.getElementById("addSubmitBtn").textContent = "Save changes";
+  document.getElementById("titleInput").value = m.title || "";
+  document.getElementById("ytInput").value = m.youtubeId ? ("https://www.youtube.com/watch?v=" + m.youtubeId) : "";
+  document.getElementById("websiteUrlInput").value = m.websiteWatchUrl || "";
+  document.getElementById("whoInput").value = m.recommendedBy || "";
+  document.getElementById("runtimeInput").value = m.runtimeMinutes || "";
+  document.getElementById("lastWatchedInput").value = m.lastWatched || "";
+  document.getElementById("ageGroupInput").value = m.ageGroup || "";
+  document.getElementById("notesInput").value = m.notes || "";
+  document.querySelectorAll('#platformCheckboxes input').forEach(cb => {
+    cb.checked = (m.platforms || []).includes(cb.value);
+  });
+  document.getElementById("addOverlay").hidden = false;
+  document.getElementById("titleInput").focus();
+}
+
+function closeAddModal(){
+  document.getElementById("addOverlay").hidden = true;
+  editingMovieId = null;
+}
 
 document.getElementById("openAddBtn").onclick = openAddModal;
 document.getElementById("closeAddBtn").onclick = closeAddModal;
 document.getElementById("cancelAddBtn").onclick = closeAddModal;
 document.getElementById("closePlayerBtn").onclick = closePlayer;
+document.getElementById("closeWatchBtn").onclick = closeWatchOptions;
 document.getElementById("addOverlay").addEventListener("click", (e) => { if(e.target.id==="addOverlay") closeAddModal(); });
 document.getElementById("playerOverlay").addEventListener("click", (e) => { if(e.target.id==="playerOverlay") closePlayer(); });
+document.getElementById("watchOverlay").addEventListener("click", (e) => { if(e.target.id==="watchOverlay") closeWatchOptions(); });
 document.addEventListener("keydown", (e) => {
-  if(e.key === "Escape"){ closeAddModal(); closePlayer(); closeSettings(); }
+  if(e.key === "Escape"){ closeAddModal(); closePlayer(); closeSettings(); closeWatchOptions(); }
 });
 document.getElementById("searchInput").addEventListener("input", render);
 
@@ -1147,11 +1403,13 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const title = document.getElementById("titleInput").value.trim();
   const ytRaw = document.getElementById("ytInput").value.trim();
+  const websiteWatchUrl = document.getElementById("websiteUrlInput").value.trim() || null;
   const who = document.getElementById("whoInput").value.trim();
   const notes = document.getElementById("notesInput").value.trim();
-  const platforms = [...document.querySelectorAll('#platformCheckboxes input:checked')].map(cb => cb.value);
+  const manualPlatforms = [...document.querySelectorAll('#platformCheckboxes input:checked')].map(cb => cb.value);
   const manualRuntimeRaw = document.getElementById("runtimeInput").value.trim();
   const lastWatched = document.getElementById("lastWatchedInput").value || null;
+  const manualAgeGroup = document.getElementById("ageGroupInput").value || "";
 
   const ytError = document.getElementById("ytError");
   ytError.textContent = "";
@@ -1177,8 +1435,17 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
 
   const manualRuntime = manualRuntimeRaw ? parseInt(manualRuntimeRaw, 10) : NaN;
   const runtimeMinutes = !isNaN(manualRuntime) ? manualRuntime : (tmdb && tmdb.runtime ? tmdb.runtime : null);
+  const ageGroup = manualAgeGroup || (tmdb && tmdb.suggestedAgeGroup ? tmdb.suggestedAgeGroup : null);
+  const platforms = manualPlatforms.length ? manualPlatforms : (tmdb && tmdb.suggestedPlatforms ? tmdb.suggestedPlatforms : []);
 
-  movies.push({ id: uid(), title, youtubeId, platforms, recommendedBy: who, notes, runtimeMinutes, lastWatched, tmdb });
+  if(editingMovieId){
+    const idx = movies.findIndex(x => x.id === editingMovieId);
+    if(idx !== -1){
+      movies[idx] = { id: editingMovieId, title, youtubeId, websiteWatchUrl, platforms, recommendedBy: who, notes, runtimeMinutes, lastWatched, ageGroup, tmdb };
+    }
+  }else{
+    movies.push({ id: uid(), title, youtubeId, websiteWatchUrl, platforms, recommendedBy: who, notes, runtimeMinutes, lastWatched, ageGroup, tmdb });
+  }
   await saveMovies();
   closeAddModal();
   render();
