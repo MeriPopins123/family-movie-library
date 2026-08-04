@@ -759,6 +759,10 @@
         <input type="text" id="writersInput" placeholder="e.g. Jared Bush, Charise Castro Smith">
       </div>
       <div class="field">
+        <label for="actorsInput">Actors</label>
+        <input type="text" id="actorsInput" placeholder="e.g. Stephanie Beatriz, John Leguizamo">
+      </div>
+      <div class="field">
         <label for="yearInput">Release year</label>
         <input type="text" inputmode="numeric" id="yearInput" placeholder="e.g. 2021">
       </div>
@@ -833,6 +837,8 @@ const FIREBASE_CONFIG = {
 const CONFIG_IS_PLACEHOLDER = FIREBASE_CONFIG.apiKey === "PASTE_YOUR_FIREBASE_API_KEY_HERE";
 
 let movies = [];
+let shownSuggestionIds = new Set(); // ids already surfaced this session, so re-searching finds fresh ones
+let lastSuggestionResults = []; // last batch shown, so we can prune it live as movies get added
 let activePlatformFilter = null;
 let activePersonFilter = null;
 let activeRuntimeFilter = null;
@@ -870,10 +876,12 @@ function creditsBits(m){
   const director = (m.tmdb && m.tmdb.director && m.tmdb.director.name) || (m.manualCredits && m.manualCredits.director);
   const studio = (m.tmdb && m.tmdb.studio && m.tmdb.studio.name) || (m.manualCredits && m.manualCredits.studio);
   const writers = (m.manualCredits && m.manualCredits.writers) || (m.tmdb && m.tmdb.writers && m.tmdb.writers.length ? m.tmdb.writers.map(w => w.name).join(", ") : null);
+  const actors = (m.manualCredits && m.manualCredits.actors) || (m.tmdb && m.tmdb.cast && m.tmdb.cast.length ? m.tmdb.cast.map(c => c.name).join(", ") : null);
   const year = (m.manualCredits && m.manualCredits.year) || (m.tmdb && m.tmdb.year);
   if(director) bits.push("Dir. " + director);
   if(studio) bits.push(studio);
   if(writers) bits.push("Written by " + writers);
+  if(actors) bits.push("Starring " + actors);
   if(year) bits.push(year);
   return bits;
 }
@@ -946,6 +954,7 @@ async function lookupTmdbMetadata(title){
     const studio = (details.production_companies && details.production_companies[0])
       ? { id: details.production_companies[0].id, name: details.production_companies[0].name }
       : null;
+    const cast = ((details.credits && details.credits.cast) || []).slice(0,5).map(c => ({ id: c.id, name: c.name }));
 
     let suggestedAgeGroup = null;
     const releaseResults = (details.release_dates && details.release_dates.results) || [];
@@ -975,6 +984,7 @@ async function lookupTmdbMetadata(title){
       director: directorObj ? { id: directorObj.id, name: directorObj.name } : null,
       writers,
       studio,
+      cast,
       suggestedAgeGroup,
       suggestedPlatforms,
       watchLink
@@ -988,13 +998,17 @@ async function lookupTmdbMetadata(title){
 async function findSuggestions(){
   if(!TMDB_KEY) return [];
   const libraryIds = new Set(movies.filter(m => m.tmdb && m.tmdb.id).map(m => m.tmdb.id));
+  const libraryTitles = new Set(movies.map(m => (m.title||"").trim().toLowerCase()));
   const candidateMap = new Map();
   const doneDirectors = new Set();
   const doneWriters = new Set();
   const doneStudios = new Set();
+  const doneActors = new Set();
 
-  function addCandidate(item, reason){
+  function addCandidate(item, reason, weight){
     if(!item || libraryIds.has(item.id)) return;
+    if(libraryTitles.has((item.title||"").trim().toLowerCase())) return;
+    if(shownSuggestionIds.has(item.id)) return;
     if(!candidateMap.has(item.id)){
       candidateMap.set(item.id, {
         id: item.id,
@@ -1002,20 +1016,29 @@ async function findSuggestions(){
         year: (item.release_date || "").slice(0,4),
         posterPath: item.poster_path,
         popularity: item.popularity || item.vote_average || 0,
-        reasons: new Set()
+        reasons: new Set(),
+        score: 0
       });
     }
-    candidateMap.get(item.id).reasons.add(reason);
+    const entry = candidateMap.get(item.id);
+    entry.reasons.add(reason);
+    entry.score += weight;
   }
 
-  for(const m of movies){
+  // Process our highest-rated movies first so that when a director/writer/studio/actor
+  // is shared across several library titles, the credit gets weighted by the best rating.
+  const ratedMoviesFirst = [...movies].sort((a,b) => (b.familyRating||0) - (a.familyRating||0));
+
+  for(const m of ratedMoviesFirst){
     if(!m.tmdb) continue;
+    const weight = m.familyRating || 1; // prefer credits from movies we rated highly
+
     const d = m.tmdb.director;
     if(d && !doneDirectors.has(d.id)){
       doneDirectors.add(d.id);
       try{
         const credits = await tmdbFetch("/person/" + d.id + "/movie_credits");
-        (credits.crew || []).filter(c => c.job === "Director").forEach(c => addCandidate(c, "Directed by " + d.name));
+        (credits.crew || []).filter(c => c.job === "Director").forEach(c => addCandidate(c, "Directed by " + d.name, weight));
       }catch(e){ /* skip on failure */ }
     }
     for(const w of (m.tmdb.writers || [])){
@@ -1023,7 +1046,15 @@ async function findSuggestions(){
       doneWriters.add(w.id);
       try{
         const credits = await tmdbFetch("/person/" + w.id + "/movie_credits");
-        (credits.crew || []).filter(c => ["Writer","Screenplay","Story"].includes(c.job)).forEach(c => addCandidate(c, "Written by " + w.name));
+        (credits.crew || []).filter(c => ["Writer","Screenplay","Story"].includes(c.job)).forEach(c => addCandidate(c, "Written by " + w.name, weight));
+      }catch(e){ /* skip on failure */ }
+    }
+    for(const a of (m.tmdb.cast || [])){
+      if(doneActors.has(a.id)) continue;
+      doneActors.add(a.id);
+      try{
+        const credits = await tmdbFetch("/person/" + a.id + "/movie_credits");
+        (credits.cast || []).forEach(c => addCandidate(c, "Stars " + a.name, weight));
       }catch(e){ /* skip on failure */ }
     }
     const s = m.tmdb.studio;
@@ -1031,14 +1062,16 @@ async function findSuggestions(){
       doneStudios.add(s.id);
       try{
         const disc = await tmdbFetch("/discover/movie", { with_companies: s.id, sort_by: "popularity.desc" });
-        (disc.results || []).forEach(c => addCandidate(c, "From " + s.name));
+        (disc.results || []).forEach(c => addCandidate(c, "From " + s.name, weight));
       }catch(e){ /* skip on failure */ }
     }
   }
 
   const list = [...candidateMap.values()];
-  list.sort((a,b) => (b.reasons.size - a.reasons.size) || (b.popularity - a.popularity));
-  return list.slice(0,9);
+  list.sort((a,b) => (b.score - a.score) || (b.popularity - a.popularity));
+  const top = list.slice(0,9);
+  top.forEach(r => shownSuggestionIds.add(r.id));
+  return top;
 }
 
 function updateSuggestionsUI(){
@@ -1419,6 +1452,22 @@ function buildSuggestionCard(r){
   return card;
 }
 
+function refreshSuggestionsGrid(){
+  if(!lastSuggestionResults.length) return;
+  const libraryIds = new Set(movies.filter(m => m.tmdb && m.tmdb.id).map(m => m.tmdb.id));
+  const libraryTitles = new Set(movies.map(m => (m.title||"").trim().toLowerCase()));
+  const stillFresh = lastSuggestionResults.filter(r => !libraryIds.has(r.id) && !libraryTitles.has((r.title||"").trim().toLowerCase()));
+  if(stillFresh.length === lastSuggestionResults.length) return; // nothing changed, leave grid as-is
+  lastSuggestionResults = stillFresh;
+  const grid = document.getElementById("suggestionsGrid");
+  grid.innerHTML = "";
+  if(!stillFresh.length){
+    grid.innerHTML = `<p class="notes">No fresh matches yet — try adding a few more movies first.</p>`;
+    return;
+  }
+  stillFresh.forEach(r => grid.appendChild(buildSuggestionCard(r)));
+}
+
 async function quickAddFromSuggestion(r){
   openAddModal();
   document.getElementById("titleInput").value = r.title;
@@ -1443,6 +1492,7 @@ async function onFindSuggestionsClick(){
   grid.innerHTML = "";
   try{
     const results = await findSuggestions();
+    lastSuggestionResults = results;
     if(!results.length){
       grid.innerHTML = `<p class="notes">No fresh matches yet — try adding a few more movies first.</p>`;
     }else{
@@ -1482,11 +1532,11 @@ function buildLikedByCheckboxes(){
 }
 
 let editingMovieId = null;
-let draftManualCredits = { director: "", studio: "", writers: "", year: "" };
+let draftManualCredits = { director: "", studio: "", writers: "", actors: "", year: "" };
 
 function openAddModal(){
   editingMovieId = null;
-  draftManualCredits = { director: "", studio: "", writers: "", year: "" };
+  draftManualCredits = { director: "", studio: "", writers: "", actors: "", year: "" };
   document.getElementById("addForm").reset();
   document.getElementById("ytError").textContent = "";
   document.getElementById("addTitle").textContent = "Add a Movie";
@@ -1497,7 +1547,7 @@ function openAddModal(){
 
 function openEditModal(m){
   editingMovieId = m.id;
-  draftManualCredits = Object.assign({ director: "", studio: "", writers: "", year: "" }, m.manualCredits || {});
+  draftManualCredits = Object.assign({ director: "", studio: "", writers: "", actors: "", year: "" }, m.manualCredits || {});
   document.getElementById("addForm").reset();
   document.getElementById("ytError").textContent = "";
   document.getElementById("addTitle").textContent = "Edit Movie";
@@ -1542,6 +1592,7 @@ function openDetailsModal(){
   document.getElementById("directorInput").value = draftManualCredits.director || "";
   document.getElementById("studioInput").value = draftManualCredits.studio || "";
   document.getElementById("writersInput").value = draftManualCredits.writers || "";
+  document.getElementById("actorsInput").value = draftManualCredits.actors || "";
   document.getElementById("yearInput").value = draftManualCredits.year || "";
   document.getElementById("detailsOverlay").hidden = false;
 }
@@ -1555,6 +1606,7 @@ document.getElementById("detailsForm").addEventListener("submit", (e) => {
     director: document.getElementById("directorInput").value.trim(),
     studio: document.getElementById("studioInput").value.trim(),
     writers: document.getElementById("writersInput").value.trim(),
+    actors: document.getElementById("actorsInput").value.trim(),
     year: document.getElementById("yearInput").value.trim()
   };
   closeDetails();
@@ -1575,7 +1627,7 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
   const language = document.getElementById("languageInput").value || null;
   const familyRatingRaw = document.getElementById("familyRatingInput").value;
   const familyRating = familyRatingRaw ? parseInt(familyRatingRaw, 10) : null;
-  const hasManualCredits = draftManualCredits.director || draftManualCredits.studio || draftManualCredits.writers || draftManualCredits.year;
+  const hasManualCredits = draftManualCredits.director || draftManualCredits.studio || draftManualCredits.writers || draftManualCredits.actors || draftManualCredits.year;
   const manualCredits = hasManualCredits ? { ...draftManualCredits } : null;
 
   const ytError = document.getElementById("ytError");
@@ -1616,6 +1668,7 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
   await saveMovies();
   closeAddModal();
   render();
+  refreshSuggestionsGrid();
 });
 
 document.getElementById("openSettingsBtn").onclick = () => {
