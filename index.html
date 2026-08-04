@@ -1451,6 +1451,7 @@ function closePlayer(){
 
 function buildSuggestionCard(r){
   const card = el("div","ticket suggestion-card");
+  card.dataset.suggestionId = r.id;
   if(r.posterPath){
     card.innerHTML = `<div class="suggestion-poster"><img src="https://image.tmdb.org/t/p/w342${r.posterPath}" alt="${escapeHtml(r.title)} poster" loading="lazy"></div>`;
   }else{
@@ -1470,9 +1471,23 @@ function buildSuggestionCard(r){
   const addBtn = el("button","delete-btn","+ Quick add");
   addBtn.onclick = () => quickAddFromSuggestion(r);
   actions.appendChild(addBtn);
+  const dismissBtn = el("button","delete-btn","Not interested");
+  dismissBtn.onclick = () => dismissSuggestion(r.id);
+  actions.appendChild(dismissBtn);
   info.appendChild(actions);
   card.appendChild(info);
   return card;
+}
+
+function dismissSuggestion(id){
+  lastSuggestionResults = lastSuggestionResults.filter(r => r.id !== id);
+  shownSuggestionIds.add(id); // never resurface it, even on a later "Find suggestions" click
+  const grid = document.getElementById("suggestionsGrid");
+  const card = grid.querySelector(`[data-suggestion-id="${id}"]`);
+  if(card) card.remove();
+  if(!lastSuggestionResults.length){
+    grid.innerHTML = `<p class="notes">No fresh matches yet — try adding a few more movies first.</p>`;
+  }
 }
 
 function refreshSuggestionsGrid(){
