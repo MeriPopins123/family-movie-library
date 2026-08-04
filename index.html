@@ -667,8 +667,8 @@
         <input type="text" id="websiteUrlInput" placeholder="https://example.com/watch/...">
       </div>
       <div class="field">
-        <label for="whoInput">Recommended by</label>
-        <input type="text" id="whoInput" placeholder="e.g. Mom, Dad, Sam...">
+        <label>Liked by</label>
+        <div class="platform-grid" id="likedByCheckboxes"></div>
       </div>
       <div class="field-row">
         <div class="field">
@@ -758,6 +758,7 @@
 
 <script>
 const PLATFORMS = ["YouTube","Website","Prime Video","Netflix","Disney+","Max","Hulu","Apple TV+","Peacock","Paramount+","Other"];
+const LIKED_BY_OPTIONS = ["Children A","Children E","Mama","Papa","Others"];
 
 const SEED_MOVIES = [
   { id: "seed1", title: "Encanto", youtubeId: "aUts14xyjHg", platforms: ["Disney+"], recommendedBy: "Everyone", notes: "Musical, magical realism, great for family movie night.", runtimeMinutes: 102, lastWatched: "2026-07-20", ageGroup: "Young" },
@@ -1037,10 +1038,8 @@ function el(tag, cls, html){
 
 function renderChips(){
   const platformSet = new Set();
-  const peopleSet = new Set();
   movies.forEach(m => {
     (m.platforms||[]).forEach(p => platformSet.add(p));
-    if(m.recommendedBy) peopleSet.add(m.recommendedBy);
   });
 
   const platformChips = document.getElementById("platformChips");
@@ -1056,14 +1055,12 @@ function renderChips(){
 
   const peopleChips = document.getElementById("peopleChips");
   peopleChips.innerHTML = "";
-  if(peopleSet.size){
-    peopleChips.appendChild(el("span","chip-group-label","Recommended by"));
-    [...peopleSet].sort().forEach(p => {
-      const chip = el("button","chip"+(activePersonFilter===p?" active":""), p);
-      chip.onclick = () => { activePersonFilter = activePersonFilter===p ? null : p; render(); };
-      peopleChips.appendChild(chip);
-    });
-  }
+  peopleChips.appendChild(el("span","chip-group-label","Liked by"));
+  LIKED_BY_OPTIONS.forEach(p => {
+    const chip = el("button","chip"+(activePersonFilter===p?" active":""), p);
+    chip.onclick = () => { activePersonFilter = activePersonFilter===p ? null : p; render(); };
+    peopleChips.appendChild(chip);
+  });
 
   const runtimeChips = document.getElementById("runtimeChips");
   runtimeChips.innerHTML = "";
@@ -1112,7 +1109,7 @@ function render(){
   const filtered = movies.filter(m => {
     if(query && !m.title.toLowerCase().includes(query)) return false;
     if(activePlatformFilter && !(m.platforms||[]).includes(activePlatformFilter)) return false;
-    if(activePersonFilter && m.recommendedBy !== activePersonFilter) return false;
+    if(activePersonFilter && !(m.likedBy||[]).includes(activePersonFilter)) return false;
     if(activeRuntimeFilter && runtimeBucket(m.runtimeMinutes) !== activeRuntimeFilter) return false;
     if(activeAgeGroupFilter && m.ageGroup !== activeAgeGroupFilter) return false;
     if(activeLanguageFilter && m.language !== activeLanguageFilter) return false;
@@ -1162,7 +1159,9 @@ function buildCard(m){
 
   const info = el("div","ticket-info");
   info.appendChild(el("h3", null, escapeHtml(m.title)));
-  if(m.recommendedBy){
+  if(m.likedBy && m.likedBy.length){
+    info.appendChild(el("div","meta-line","LIKED BY " + escapeHtml(m.likedBy.join(", ")).toUpperCase()));
+  }else if(m.recommendedBy){
     info.appendChild(el("div","meta-line","RECOMMENDED BY " + escapeHtml(m.recommendedBy).toUpperCase()));
   }
   if(m.tmdb && (m.tmdb.director || m.tmdb.studio) || m.runtimeMinutes){
@@ -1374,6 +1373,19 @@ function buildPlatformCheckboxes(){
   });
 }
 
+function buildLikedByCheckboxes(){
+  const wrap = document.getElementById("likedByCheckboxes");
+  wrap.innerHTML = "";
+  LIKED_BY_OPTIONS.forEach(p => {
+    const label = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = p; cb.name = "likedBy";
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(p));
+    wrap.appendChild(label);
+  });
+}
+
 let editingMovieId = null;
 
 function openAddModal(){
@@ -1395,7 +1407,6 @@ function openEditModal(m){
   document.getElementById("titleInput").value = m.title || "";
   document.getElementById("ytInput").value = m.youtubeId ? ("https://www.youtube.com/watch?v=" + m.youtubeId) : "";
   document.getElementById("websiteUrlInput").value = m.websiteWatchUrl || "";
-  document.getElementById("whoInput").value = m.recommendedBy || "";
   document.getElementById("runtimeInput").value = m.runtimeMinutes || "";
   document.getElementById("lastWatchedInput").value = m.lastWatched || "";
   document.getElementById("ageGroupInput").value = m.ageGroup || "";
@@ -1403,6 +1414,9 @@ function openEditModal(m){
   document.getElementById("notesInput").value = m.notes || "";
   document.querySelectorAll('#platformCheckboxes input').forEach(cb => {
     cb.checked = (m.platforms || []).includes(cb.value);
+  });
+  document.querySelectorAll('#likedByCheckboxes input').forEach(cb => {
+    cb.checked = (m.likedBy || []).includes(cb.value);
   });
   document.getElementById("addOverlay").hidden = false;
   document.getElementById("titleInput").focus();
@@ -1431,7 +1445,7 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
   const title = document.getElementById("titleInput").value.trim();
   const ytRaw = document.getElementById("ytInput").value.trim();
   const websiteWatchUrl = document.getElementById("websiteUrlInput").value.trim() || null;
-  const who = document.getElementById("whoInput").value.trim();
+  const likedBy = [...document.querySelectorAll('#likedByCheckboxes input:checked')].map(cb => cb.value);
   const notes = document.getElementById("notesInput").value.trim();
   const manualPlatforms = [...document.querySelectorAll('#platformCheckboxes input:checked')].map(cb => cb.value);
   const manualRuntimeRaw = document.getElementById("runtimeInput").value.trim();
@@ -1469,10 +1483,10 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
   if(editingMovieId){
     const idx = movies.findIndex(x => x.id === editingMovieId);
     if(idx !== -1){
-      movies[idx] = { id: editingMovieId, title, youtubeId, websiteWatchUrl, platforms, recommendedBy: who, notes, runtimeMinutes, lastWatched, ageGroup, language, tmdb };
+      movies[idx] = { id: editingMovieId, title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroup, language, tmdb };
     }
   }else{
-    movies.push({ id: uid(), title, youtubeId, websiteWatchUrl, platforms, recommendedBy: who, notes, runtimeMinutes, lastWatched, ageGroup, language, tmdb });
+    movies.push({ id: uid(), title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroup, language, tmdb });
   }
   await saveMovies();
   closeAddModal();
@@ -1515,6 +1529,7 @@ document.getElementById("codeGateForm").addEventListener("submit", (e) => {
 function init(){
   loadTmdbKey();
   buildPlatformCheckboxes();
+  buildLikedByCheckboxes();
   if(CONFIG_IS_PLACEHOLDER){
     document.getElementById("configBanner").hidden = false;
     return;
