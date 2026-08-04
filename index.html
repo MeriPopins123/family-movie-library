@@ -1191,6 +1191,10 @@ function buildCard(m){
   jw.rel = "noopener noreferrer";
   actions.appendChild(jw);
   const btnGroup = el("div","ticket-actions-buttons");
+  const watchedBtn = el("button","edit-btn","&#10003; Watched");
+  watchedBtn.title = "Set last watched to right now";
+  watchedBtn.onclick = () => markWatched(m.id);
+  btnGroup.appendChild(watchedBtn);
   const editBtn = el("button","edit-btn","Edit");
   editBtn.onclick = () => openEditModal(m);
   btnGroup.appendChild(editBtn);
@@ -1212,6 +1216,21 @@ function escapeHtml(str){
 
 async function removeMovie(id){
   movies = movies.filter(m => m.id !== id);
+  await saveMovies();
+  render();
+}
+
+function todayISODate(){
+  const d = new Date();
+  const mm = String(d.getMonth()+1).padStart(2,"0");
+  const dd = String(d.getDate()).padStart(2,"0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+async function markWatched(id){
+  const m = movies.find(x => x.id === id);
+  if(!m) return;
+  m.lastWatched = todayISODate();
   await saveMovies();
   render();
 }
@@ -1486,7 +1505,7 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
       movies[idx] = { id: editingMovieId, title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroup, language, tmdb };
     }
   }else{
-    movies.push({ id: uid(), title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroup, language, tmdb });
+    movies.unshift({ id: uid(), title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroup, language, tmdb });
   }
   await saveMovies();
   closeAddModal();
