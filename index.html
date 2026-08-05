@@ -978,23 +978,61 @@ function saveYoutubeKey(value){
   localStorage.setItem("youtubeApiKey", YOUTUBE_KEY);
 }
 
+function parseIsoDurationToMinutes(iso){
+  const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso || "");
+  if(!m) return null;
+  const hours = parseInt(m[1]||0, 10), mins = parseInt(m[2]||0, 10), secs = parseInt(m[3]||0, 10);
+  return hours*60 + mins + secs/60;
+}
+
+// Looking at the video's own title and runtime tells us whether a YouTube search hit is
+// actually a trailer, just a chunk of the film ("Part 1"), or something long enough that it
+// might be a full (likely unauthorized) upload we shouldn't treat as a legitimate source.
+function classifyYoutubeVideo(video, expectedRuntimeMinutes){
+  const title = (video.title || "").toLowerCase();
+  if(/\btrailer\b/.test(title)) return "trailer";
+  if(/\bpart\b/.test(title)) return "partial";
+  if(expectedRuntimeMinutes && video.durationMinutes != null && video.durationMinutes < expectedRuntimeMinutes * 0.3){
+    return "trailer"; // significantly shorter than the film — e.g. a 5 min clip for a 100 min movie
+  }
+  return "unknown";
+}
+
 async function searchYoutubeVideo(query){
   if(!YOUTUBE_KEY) return null;
   try{
-    const url = new URL("https://www.googleapis.com/youtube/v3/search");
-    url.searchParams.set("part", "snippet");
-    url.searchParams.set("q", query);
-    url.searchParams.set("type", "video");
-    url.searchParams.set("maxResults", "1");
-    url.searchParams.set("key", YOUTUBE_KEY);
-    const res = await fetch(url.toString());
-    if(!res.ok) return null;
-    const data = await res.json();
-    const item = data.items && data.items[0];
+    const searchUrl = new URL("https://www.googleapis.com/youtube/v3/search");
+    searchUrl.searchParams.set("part", "snippet");
+    searchUrl.searchParams.set("q", query);
+    searchUrl.searchParams.set("type", "video");
+    searchUrl.searchParams.set("maxResults", "1");
+    searchUrl.searchParams.set("key", YOUTUBE_KEY);
+    const searchRes = await fetch(searchUrl.toString());
+    if(!searchRes.ok) return null;
+    const searchData = await searchRes.json();
+    const item = searchData.items && searchData.items[0];
     const videoId = item && item.id && item.id.videoId;
     if(!videoId) return null;
+    const title = (item.snippet && item.snippet.title) || "";
+
+    let durationMinutes = null;
+    try{
+      const detailsUrl = new URL("https://www.googleapis.com/youtube/v3/videos");
+      detailsUrl.searchParams.set("part", "contentDetails");
+      detailsUrl.searchParams.set("id", videoId);
+      detailsUrl.searchParams.set("key", YOUTUBE_KEY);
+      const detailsRes = await fetch(detailsUrl.toString());
+      if(detailsRes.ok){
+        const detailsData = await detailsRes.json();
+        const iso = detailsData.items && detailsData.items[0] && detailsData.items[0].contentDetails && detailsData.items[0].contentDetails.duration;
+        durationMinutes = parseIsoDurationToMinutes(iso);
+      }
+    }catch(e){ /* duration is nice-to-have, not required */ }
+
     return {
       videoId,
+      title,
+      durationMinutes,
       url: "https://www.youtube.com/watch?v=" + videoId,
       thumbnailUrl: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
     };
@@ -1004,9 +1042,11 @@ async function searchYoutubeVideo(query){
   }
 }
 
-// Prefer an official TMDB trailer; fall back to a plain YouTube search for the title
-// when there's no trailer on file (or no TMDB match at all).
-async function findVideoForTitle(title, tmdbId){
+// Prefer an official TMDB trailer; fall back to a YouTube search for the title when there's
+// no trailer on file (or no TMDB match at all). A found video is only used when it looks like
+// an actual trailer — a "Part N" upload or something as long as the film itself is skipped
+// rather than risk tagging a partial or full unauthorized upload as the movie's video.
+async function findVideoForTitle(title, tmdbId, expectedRuntimeMinutes){
   if(tmdbId){
     const trailerUrl = await findTrailerUrl(tmdbId);
     if(trailerUrl){
@@ -1014,7 +1054,19 @@ async function findVideoForTitle(title, tmdbId){
       return { url: trailerUrl, videoId, thumbnailUrl: videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null };
     }
   }
-  return await searchYoutubeVideo(title);
+  const found = await searchYoutubeVideo(title + " trailer");
+  if(!found) return null;
+
+  const kind = classifyYoutubeVideo(found, expectedRuntimeMinutes);
+  if(kind === "partial"){
+    console.warn(`Skipping YouTube result for "${title}" — looks like a partial upload: "${found.title}"`);
+    return null;
+  }
+  if(kind === "unknown" && expectedRuntimeMinutes && found.durationMinutes != null && found.durationMinutes >= expectedRuntimeMinutes * 0.8){
+    console.warn(`Skipping YouTube result for "${title}" — duration (${Math.round(found.durationMinutes)}m) is close to the film's runtime, not a trailer: "${found.title}"`);
+    return null;
+  }
+  return found;
 }
 
 function loadShownSuggestionIds(){
@@ -1103,7 +1155,7 @@ async function lookupTmdbMetadata(title){
     const watchProviders = details["watch/providers"] && details["watch/providers"].results;
     const usProviders = watchProviders && watchProviders.US;
     if(usProviders){
-      const buckets = [...(usProviders.flatrate||[]), ...(usProviders.free||[]), ...(usProviders.ads||[])];
+      const buckets = [...(usProviders.flatrate||[]), ...(usProviders.free||[]), ...(usProviders.ads||[]), ...(usProviders.rent||[])];
       const mapped = new Set();
       buckets.forEach(p => { const mp = mapProviderName(p.provider_name); if(mp) mapped.add(mp); });
       suggestedPlatforms = [...mapped];
@@ -1231,7 +1283,7 @@ async function findSuggestions(){
       const usProviders = watchProviders && watchProviders.US;
       r.platforms = [];
       if(usProviders){
-        const buckets = [...(usProviders.flatrate||[]), ...(usProviders.free||[]), ...(usProviders.ads||[])];
+        const buckets = [...(usProviders.flatrate||[]), ...(usProviders.free||[]), ...(usProviders.ads||[]), ...(usProviders.rent||[])];
         const mapped = new Set();
         buckets.forEach(p => { const mp = mapProviderName(p.provider_name); if(mp) mapped.add(mp); });
         r.platforms = [...mapped];
@@ -1751,7 +1803,7 @@ async function runTitleAutofill(){
   let video = null;
   const ytInput = document.getElementById("ytInput");
   if(!ytInput.value.trim()){
-    video = await findVideoForTitle(title, result && result.id);
+    video = await findVideoForTitle(title, result && result.id, result && result.runtime);
     if(document.getElementById("titleInput").value.trim() === title && !ytInput.value.trim() && video){
       ytInput.value = video.url;
       // No TMDB poster available — fall back to the YouTube video's own thumbnail as the cover.
@@ -1931,7 +1983,7 @@ document.getElementById("bulkAddForm").addEventListener("submit", async (e) => {
     }
 
     // Official TMDB trailer if we matched a movie, else a plain YouTube search for the title.
-    const video = await findVideoForTitle(title, tmdb && tmdb.id);
+    const video = await findVideoForTitle(title, tmdb && tmdb.id, tmdb && tmdb.runtime);
     const youtubeId = video ? video.videoId : "";
     // No TMDB poster to fall back on — use the YouTube video's own thumbnail as the cover.
     const customPosterUrl = (video && video.thumbnailUrl && !(tmdb && tmdb.posterPath)) ? video.thumbnailUrl : null;
