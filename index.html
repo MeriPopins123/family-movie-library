@@ -641,6 +641,7 @@
     <input type="text" id="searchInput" placeholder="Search titles..." aria-label="Search movies by title">
   </div>
   <button class="add-btn settings-btn" id="openSettingsBtn" title="Set up suggestions" aria-label="Suggestions settings">&#9881;</button>
+  <button class="add-btn settings-btn" id="openBulkAddBtn" title="Add multiple movies from a list of titles" aria-label="Bulk add movies">&#128203; Bulk add</button>
   <button class="add-btn" id="openAddBtn">+ Add a movie</button>
   <button class="add-btn explore-btn" id="exploreBtn">&#128269; Explore new</button>
 </div>
@@ -766,6 +767,26 @@
       <div class="form-actions">
         <button type="button" class="btn-secondary" id="cancelAddBtn">Cancel</button>
         <button type="submit" class="btn-primary" id="addSubmitBtn">Save to library</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Bulk add modal -->
+<div class="overlay" id="bulkAddOverlay" hidden>
+  <div class="modal" role="dialog" aria-labelledby="bulkAddTitle" aria-modal="true">
+    <button class="modal-close" id="closeBulkAddBtn" aria-label="Close">&times;</button>
+    <h2 id="bulkAddTitle">Bulk Add Movies</h2>
+    <p class="hint">Paste a list of titles, one per line. With a TMDB key set in Settings (&#9881;), each one is looked up automatically for its cover, trailer, runtime, and platforms.</p>
+    <form class="add-form" id="bulkAddForm">
+      <div class="field">
+        <label for="bulkTitlesInput">Titles</label>
+        <textarea id="bulkTitlesInput" rows="8" placeholder="Encanto&#10;Toy Story 4&#10;Inside Out 2"></textarea>
+      </div>
+      <p class="hint" id="bulkAddProgress" hidden></p>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" id="cancelBulkAddBtn">Cancel</button>
+        <button type="submit" class="btn-primary" id="bulkAddSubmitBtn">Add all</button>
       </div>
     </form>
   </div>
@@ -1766,12 +1787,92 @@ document.getElementById("closePlayerBtn").onclick = closePlayer;
 document.getElementById("closeWatchBtn").onclick = closeWatchOptions;
 document.getElementById("exploreBtn").onclick = openExploreModal;
 document.getElementById("closeExploreBtn").onclick = closeExploreModal;
+document.getElementById("openBulkAddBtn").onclick = openBulkAddModal;
+document.getElementById("closeBulkAddBtn").onclick = closeBulkAddModal;
+document.getElementById("cancelBulkAddBtn").onclick = closeBulkAddModal;
 document.getElementById("addOverlay").addEventListener("click", (e) => { if(e.target.id==="addOverlay") closeAddModal(); });
 document.getElementById("playerOverlay").addEventListener("click", (e) => { if(e.target.id==="playerOverlay") closePlayer(); });
 document.getElementById("watchOverlay").addEventListener("click", (e) => { if(e.target.id==="watchOverlay") closeWatchOptions(); });
 document.getElementById("exploreOverlay").addEventListener("click", (e) => { if(e.target.id==="exploreOverlay") closeExploreModal(); });
+document.getElementById("bulkAddOverlay").addEventListener("click", (e) => { if(e.target.id==="bulkAddOverlay") closeBulkAddModal(); });
 document.addEventListener("keydown", (e) => {
-  if(e.key === "Escape"){ closeAddModal(); closePlayer(); closeSettings(); closeWatchOptions(); closeDetails(); closeExploreModal(); }
+  if(e.key === "Escape"){ closeAddModal(); closePlayer(); closeSettings(); closeWatchOptions(); closeDetails(); closeExploreModal(); closeBulkAddModal(); }
+});
+
+function openBulkAddModal(){
+  document.getElementById("bulkTitlesInput").value = "";
+  document.getElementById("bulkAddProgress").hidden = true;
+  document.getElementById("bulkAddSubmitBtn").disabled = false;
+  document.getElementById("bulkAddOverlay").hidden = false;
+  document.getElementById("bulkTitlesInput").focus();
+}
+function closeBulkAddModal(){
+  document.getElementById("bulkAddOverlay").hidden = true;
+}
+
+document.getElementById("bulkAddForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const titles = document.getElementById("bulkTitlesInput").value
+    .split("\n").map(t => t.trim()).filter(Boolean);
+  if(!titles.length) return;
+
+  const libraryTitles = new Set(movies.map(m => (m.title||"").trim().toLowerCase()));
+  const toAdd = [];
+  let skippedCount = 0;
+  for(const t of titles){
+    if(libraryTitles.has(t.toLowerCase())){ skippedCount++; continue; }
+    toAdd.push(t);
+  }
+
+  const submitBtn = document.getElementById("bulkAddSubmitBtn");
+  const progress = document.getElementById("bulkAddProgress");
+  submitBtn.disabled = true;
+  progress.hidden = false;
+
+  const newMovies = [];
+  let unmatchedCount = 0;
+  for(let i = 0; i < toAdd.length; i++){
+    const title = toAdd[i];
+    progress.textContent = `Adding ${i+1} of ${toAdd.length}: ${title}…`;
+
+    const tmdb = TMDB_KEY ? await lookupTmdbMetadata(title) : null;
+    if(!tmdb) unmatchedCount++;
+    let youtubeId = "";
+    if(tmdb){
+      const trailerUrl = await findTrailerUrl(tmdb.id);
+      if(trailerUrl) youtubeId = extractYoutubeId(trailerUrl);
+    }
+
+    newMovies.push({
+      id: uid(),
+      title,
+      youtubeId,
+      websiteWatchUrl: null,
+      platforms: (tmdb && tmdb.suggestedPlatforms) || [],
+      likedBy: [],
+      notes: "",
+      runtimeMinutes: (tmdb && tmdb.runtime) || null,
+      lastWatched: null,
+      ageGroup: (tmdb && tmdb.suggestedAgeGroup) || null,
+      language: null,
+      familyRating: null,
+      manualCredits: null,
+      customPosterUrl: null,
+      tmdb
+    });
+  }
+
+  movies = [...newMovies, ...movies];
+  await saveMovies();
+  render();
+  refreshSuggestionsGrid();
+
+  let summary = `Added ${newMovies.length} movie${newMovies.length===1?"":"s"}.`;
+  if(skippedCount) summary += ` Skipped ${skippedCount} already in your library.`;
+  if(unmatchedCount) summary += ` ${unmatchedCount} couldn't be matched on TMDB — added with just the title; edit them to fill in the rest.`;
+  progress.textContent = summary;
+  submitBtn.disabled = false;
+  document.getElementById("bulkTitlesInput").value = "";
 });
 
 function openExploreModal(){
