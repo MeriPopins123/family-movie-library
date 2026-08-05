@@ -884,13 +884,13 @@ const CONFIG_IS_PLACEHOLDER = FIREBASE_CONFIG.apiKey === "PASTE_YOUR_FIREBASE_AP
 let movies = [];
 let shownSuggestionIds = new Set(); // ids already surfaced this session, so re-searching finds fresh ones
 let lastSuggestionResults = []; // last batch shown, so we can prune it live as movies get added
-let activePlatformFilter = null;
-let activePersonFilter = null;
-let activeRuntimeFilter = null;
-let activeAgeGroupFilter = null;
-let activeLanguageFilter = null;
+let activePlatformFilters = new Set();
+let activePersonFilters = new Set();
+let activeRuntimeFilters = new Set();
+let activeAgeGroupFilters = new Set();
+let activeLanguageFilters = new Set();
 let activeRatingFilters = new Set();
-let activeSeenSort = null; // null | "desc" (newest seen first) | "asc" (oldest seen first)
+let activeSeenSort = null; // null | "desc" (newest seen first) | "asc" (oldest seen first) — a sort direction, not a filter, so stays single-choice
 
 const RUNTIME_BUCKETS = ["Short (1–20 min)", "Medium (21–60 min)", "Full feature (60+ min)"];
 function runtimeBucket(minutes){
@@ -1219,33 +1219,25 @@ function el(tag, cls, html){
   return e;
 }
 
+function toggleInSet(set, value){
+  set.has(value) ? set.delete(value) : set.add(value);
+}
+
+function buildMultiChipRow(containerId, label, options, activeSet, formatLabel){
+  const row = document.getElementById(containerId);
+  row.innerHTML = "";
+  row.appendChild(el("span","chip-group-label",label));
+  options.forEach(opt => {
+    const chip = el("button","chip"+(activeSet.has(opt)?" active":""), formatLabel ? formatLabel(opt) : opt);
+    chip.onclick = () => { toggleInSet(activeSet, opt); render(); };
+    row.appendChild(chip);
+  });
+}
+
 function renderChips(){
-  const platformChips = document.getElementById("platformChips");
-  platformChips.innerHTML = "";
-  platformChips.appendChild(el("span","chip-group-label","Platform"));
-  PLATFORMS.forEach(p => {
-    const chip = el("button","chip"+(activePlatformFilter===p?" active":""), p);
-    chip.onclick = () => { activePlatformFilter = activePlatformFilter===p ? null : p; render(); };
-    platformChips.appendChild(chip);
-  });
-
-  const peopleChips = document.getElementById("peopleChips");
-  peopleChips.innerHTML = "";
-  peopleChips.appendChild(el("span","chip-group-label","Liked by"));
-  LIKED_BY_OPTIONS.forEach(p => {
-    const chip = el("button","chip"+(activePersonFilter===p?" active":""), p);
-    chip.onclick = () => { activePersonFilter = activePersonFilter===p ? null : p; render(); };
-    peopleChips.appendChild(chip);
-  });
-
-  const runtimeChips = document.getElementById("runtimeChips");
-  runtimeChips.innerHTML = "";
-  runtimeChips.appendChild(el("span","chip-group-label","Length"));
-  RUNTIME_BUCKETS.forEach(b => {
-    const chip = el("button","chip"+(activeRuntimeFilter===b?" active":""), b);
-    chip.onclick = () => { activeRuntimeFilter = activeRuntimeFilter===b ? null : b; render(); };
-    runtimeChips.appendChild(chip);
-  });
+  buildMultiChipRow("platformChips", "Platform", PLATFORMS, activePlatformFilters);
+  buildMultiChipRow("peopleChips", "Liked by", LIKED_BY_OPTIONS, activePersonFilters);
+  buildMultiChipRow("runtimeChips", "Length", RUNTIME_BUCKETS, activeRuntimeFilters);
 
   const recencyChips = document.getElementById("recencyChips");
   recencyChips.innerHTML = "";
@@ -1256,32 +1248,9 @@ function renderChips(){
     recencyChips.appendChild(chip);
   });
 
-  const ageGroupChips = document.getElementById("ageGroupChips");
-  ageGroupChips.innerHTML = "";
-  ageGroupChips.appendChild(el("span","chip-group-label","Age group"));
-  AGE_GROUPS.forEach(g => {
-    const chip = el("button","chip"+(activeAgeGroupFilter===g?" active":""), g);
-    chip.onclick = () => { activeAgeGroupFilter = activeAgeGroupFilter===g ? null : g; render(); };
-    ageGroupChips.appendChild(chip);
-  });
-
-  const languageChips = document.getElementById("languageChips");
-  languageChips.innerHTML = "";
-  languageChips.appendChild(el("span","chip-group-label","Language"));
-  LANGUAGES.forEach(l => {
-    const chip = el("button","chip"+(activeLanguageFilter===l?" active":""), l);
-    chip.onclick = () => { activeLanguageFilter = activeLanguageFilter===l ? null : l; render(); };
-    languageChips.appendChild(chip);
-  });
-
-  const ratingChips = document.getElementById("ratingChips");
-  ratingChips.innerHTML = "";
-  ratingChips.appendChild(el("span","chip-group-label","Family rating"));
-  FAMILY_RATINGS.forEach(n => {
-    const chip = el("button","chip"+(activeRatingFilters.has(n)?" active":""), n + "&#9733;");
-    chip.onclick = () => { activeRatingFilters.has(n) ? activeRatingFilters.delete(n) : activeRatingFilters.add(n); render(); };
-    ratingChips.appendChild(chip);
-  });
+  buildMultiChipRow("ageGroupChips", "Age group", AGE_GROUPS, activeAgeGroupFilters);
+  buildMultiChipRow("languageChips", "Language", LANGUAGES, activeLanguageFilters);
+  buildMultiChipRow("ratingChips", "Family rating", FAMILY_RATINGS, activeRatingFilters, n => n + "&#9733;");
 }
 
 function render(){
@@ -1293,11 +1262,11 @@ function render(){
 
   const filtered = movies.filter(m => {
     if(query && !m.title.toLowerCase().includes(query)) return false;
-    if(activePlatformFilter && !(m.platforms||[]).includes(activePlatformFilter)) return false;
-    if(activePersonFilter && !(m.likedBy||[]).includes(activePersonFilter)) return false;
-    if(activeRuntimeFilter && runtimeBucket(m.runtimeMinutes) !== activeRuntimeFilter) return false;
-    if(activeAgeGroupFilter && m.ageGroup !== activeAgeGroupFilter) return false;
-    if(activeLanguageFilter && m.language !== activeLanguageFilter) return false;
+    if(activePlatformFilters.size && !(m.platforms||[]).some(p => activePlatformFilters.has(p))) return false;
+    if(activePersonFilters.size && !(m.likedBy||[]).some(p => activePersonFilters.has(p))) return false;
+    if(activeRuntimeFilters.size && !activeRuntimeFilters.has(runtimeBucket(m.runtimeMinutes))) return false;
+    if(activeAgeGroupFilters.size && !activeAgeGroupFilters.has(m.ageGroup)) return false;
+    if(activeLanguageFilters.size && !activeLanguageFilters.has(m.language)) return false;
     if(activeRatingFilters.size && !activeRatingFilters.has(m.familyRating)) return false;
     return true;
   });
