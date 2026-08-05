@@ -558,18 +558,14 @@
   }
 
   /* ---------- Suggestions ---------- */
-  .suggestions{
-    max-width: 1100px;
-    margin: 10px auto 20px;
-    padding: 28px 20px 0;
-    border-top: 2px dashed var(--card-edge);
-  }
+  .explore-modal{ max-width: 900px; }
   .suggestions-header{
     display:flex;
     align-items:center;
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
+    margin-bottom: 4px;
   }
   .suggestions-header h2{
     font-family: 'Bebas Neue', sans-serif;
@@ -578,7 +574,6 @@
     font-size: 1.6rem;
     margin: 0;
   }
-  .suggestions p.hint{ margin: 10px 0 0; }
   .suggestions-grid{
     grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
     padding-top: 18px;
@@ -639,6 +634,7 @@
     <input type="text" id="searchInput" placeholder="Search titles..." aria-label="Search movies by title">
   </div>
   <button class="add-btn settings-btn" id="openSettingsBtn" title="Set up suggestions" aria-label="Suggestions settings">&#9881;</button>
+  <button class="add-btn" id="exploreBtn">&#128269; Explore new</button>
   <button class="add-btn" id="openAddBtn">+ Add a movie</button>
 </div>
 
@@ -656,15 +652,6 @@
     <h2>The marquee's empty</h2>
     <p>Add your family's first pick &mdash; paste a YouTube trailer link and tag where you stream it.</p>
   </div>
-
-  <section class="suggestions" id="suggestionsSection">
-    <div class="suggestions-header">
-      <h2>You Might Also Like</h2>
-      <button class="add-btn" id="findSuggestionsBtn" hidden>Find suggestions</button>
-    </div>
-    <p class="hint" id="suggestionsHint"></p>
-    <div class="grid suggestions-grid" id="suggestionsGrid"></div>
-  </section>
 </main>
 
 <footer class="note">Synced to everyone using the same family code</footer>
@@ -850,6 +837,19 @@
     <button class="modal-close" id="closePlayerBtn" aria-label="Close">&times;</button>
     <div id="playerContainer"></div>
     <div class="player-caption" id="playerCaption"></div>
+  </div>
+</div>
+
+<!-- Explore new movies modal -->
+<div class="overlay" id="exploreOverlay" hidden>
+  <div class="modal explore-modal" role="dialog" aria-labelledby="exploreTitle" aria-modal="true">
+    <button class="modal-close" id="closeExploreBtn" aria-label="Close">&times;</button>
+    <div class="suggestions-header">
+      <h2 id="exploreTitle">You Might Also Like</h2>
+      <button class="add-btn" id="findSuggestionsBtn" hidden>Find suggestions</button>
+    </div>
+    <p class="hint" id="suggestionsHint"></p>
+    <div class="grid suggestions-grid" id="suggestionsGrid"></div>
   </div>
 </div>
 
@@ -1095,6 +1095,26 @@ async function findSuggestions(){
   list.sort((a,b) => (b.score - a.score) || (b.popularity - a.popularity));
   const top = list.slice(0,9);
   top.forEach(r => shownSuggestionIds.add(r.id));
+
+  // Enrich the final picks with rating, runtime, streaming platforms & an IMDB link
+  await Promise.all(top.map(async (r) => {
+    try{
+      const details = await tmdbFetch("/movie/" + r.id, { append_to_response: "watch/providers" });
+      r.voteAverage = details.vote_average || null;
+      r.runtime = details.runtime || null;
+      r.imdbId = details.imdb_id || null;
+      const watchProviders = details["watch/providers"] && details["watch/providers"].results;
+      const usProviders = watchProviders && watchProviders.US;
+      r.platforms = [];
+      if(usProviders){
+        const buckets = [...(usProviders.flatrate||[]), ...(usProviders.free||[]), ...(usProviders.ads||[])];
+        const mapped = new Set();
+        buckets.forEach(p => { const mp = mapProviderName(p.provider_name); if(mp) mapped.add(mp); });
+        r.platforms = [...mapped];
+      }
+    }catch(e){ /* leave the extra fields blank on failure */ }
+  }));
+
   return top;
 }
 
@@ -1459,15 +1479,30 @@ function buildSuggestionCard(r){
   }
   const info = el("div","ticket-info");
   info.appendChild(el("h3", null, escapeHtml(r.title) + (r.year ? ` (${r.year})` : "")));
+  if(r.voteAverage){
+    info.appendChild(el("div","meta-line rating-line", "&#9733; " + r.voteAverage.toFixed(1) + "/10"));
+  }
+  if(r.runtime){
+    info.appendChild(el("div","meta-line", r.runtime + " min"));
+  }
   const badges = el("div","badges");
+  (r.platforms || []).forEach(p => badges.appendChild(el("span","badge", escapeHtml(p))));
   [...r.reasons].forEach(reason => badges.appendChild(el("span","badge reason-badge", escapeHtml(reason))));
   info.appendChild(badges);
   const actions = el("div","ticket-actions");
-  const jw = el("a","justwatch-link","Where to stream &rarr;");
-  jw.href = "https://www.justwatch.com/us/search?q=" + encodeURIComponent(r.title);
-  jw.target = "_blank";
-  jw.rel = "noopener noreferrer";
-  actions.appendChild(jw);
+  if(r.imdbId){
+    const imdb = el("a","justwatch-link","IMDB &rarr;");
+    imdb.href = "https://www.imdb.com/title/" + r.imdbId + "/";
+    imdb.target = "_blank";
+    imdb.rel = "noopener noreferrer";
+    actions.appendChild(imdb);
+  }else{
+    const jw = el("a","justwatch-link","Where to stream &rarr;");
+    jw.href = "https://www.justwatch.com/us/search?q=" + encodeURIComponent(r.title);
+    jw.target = "_blank";
+    jw.rel = "noopener noreferrer";
+    actions.appendChild(jw);
+  }
   const addBtn = el("button","delete-btn","+ Quick add");
   addBtn.onclick = () => quickAddFromSuggestion(r);
   actions.appendChild(addBtn);
@@ -1726,12 +1761,23 @@ document.getElementById("closeAddBtn").onclick = closeAddModal;
 document.getElementById("cancelAddBtn").onclick = closeAddModal;
 document.getElementById("closePlayerBtn").onclick = closePlayer;
 document.getElementById("closeWatchBtn").onclick = closeWatchOptions;
+document.getElementById("exploreBtn").onclick = openExploreModal;
+document.getElementById("closeExploreBtn").onclick = closeExploreModal;
 document.getElementById("addOverlay").addEventListener("click", (e) => { if(e.target.id==="addOverlay") closeAddModal(); });
 document.getElementById("playerOverlay").addEventListener("click", (e) => { if(e.target.id==="playerOverlay") closePlayer(); });
 document.getElementById("watchOverlay").addEventListener("click", (e) => { if(e.target.id==="watchOverlay") closeWatchOptions(); });
+document.getElementById("exploreOverlay").addEventListener("click", (e) => { if(e.target.id==="exploreOverlay") closeExploreModal(); });
 document.addEventListener("keydown", (e) => {
-  if(e.key === "Escape"){ closeAddModal(); closePlayer(); closeSettings(); closeWatchOptions(); closeDetails(); }
+  if(e.key === "Escape"){ closeAddModal(); closePlayer(); closeSettings(); closeWatchOptions(); closeDetails(); closeExploreModal(); }
 });
+
+function openExploreModal(){
+  document.getElementById("exploreOverlay").hidden = false;
+  updateSuggestionsUI();
+}
+function closeExploreModal(){
+  document.getElementById("exploreOverlay").hidden = true;
+}
 
 document.getElementById("coverFileInput").addEventListener("change", async (e) => {
   const file = e.target.files && e.target.files[0];
