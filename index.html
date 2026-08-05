@@ -861,7 +861,7 @@
 </div>
 
 <script>
-const PLATFORMS = ["YouTube","Prime Video","Netflix","Website","Disney+","Hulu","Max","Apple TV+","Peacock","Paramount+","Other"];
+const PLATFORMS = ["YouTube","Prime Video","Netflix","Website","Disney+","Hulu","Max","Apple TV+","Peacock","Paramount+","Benshi","Other"];
 const LIKED_BY_OPTIONS = ["Children A","Children E","Mama","Papa","Others"];
 
 const SEED_MOVIES = [
@@ -976,7 +976,8 @@ const PROVIDER_NAME_MAP = [
   { match: /apple tv/i, platform: "Apple TV+" },
   { match: /peacock/i, platform: "Peacock" },
   { match: /paramount/i, platform: "Paramount+" },
-  { match: /youtube/i, platform: "YouTube" }
+  { match: /youtube/i, platform: "YouTube" },
+  { match: /benshi/i, platform: "Benshi" }
 ];
 function mapProviderName(name){
   const hit = PROVIDER_NAME_MAP.find(entry => entry.match.test(name));
