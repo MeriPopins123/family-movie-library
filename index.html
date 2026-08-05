@@ -299,6 +299,22 @@
     display:flex; flex-wrap:wrap; gap:6px;
     margin: 2px 0;
   }
+  .card-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    gap:8px;
+  }
+  .price-line{ margin: 2px 0; }
+  .price-line .badge{ font-size: 0.78rem; padding: 4px 11px; }
+  .tag-box{
+    display:flex; flex-wrap:wrap; gap:6px;
+    margin: 2px 0;
+    padding: 8px 9px;
+    border: 1px solid var(--card-edge);
+    border-radius: 10px;
+    background: rgba(251,243,231,0.03);
+  }
   .badge{
     background: rgba(251,243,231,0.08);
     border: 1px solid var(--card-edge);
@@ -1531,29 +1547,48 @@ function buildCard(m){
 
   const info = el("div","ticket-info");
   info.appendChild(el("h3", null, escapeHtml(m.title)));
-  if(m.familyRating){
-    info.appendChild(el("div","meta-line rating-line", starLabel(m.familyRating)));
-  }
+
   if(m.likedBy && m.likedBy.length){
     info.appendChild(el("div","meta-line","LIKED BY " + escapeHtml(m.likedBy.join(", ")).toUpperCase()));
   }else if(m.recommendedBy){
     info.appendChild(el("div","meta-line","RECOMMENDED BY " + escapeHtml(m.recommendedBy).toUpperCase()));
   }
-  if(m.runtimeMinutes){
-    info.appendChild(el("div","meta-line", m.runtimeMinutes + " min"));
+
+  // Runtime (left) + last watched (right), on one line
+  if(m.runtimeMinutes || m.lastWatched){
+    const row = el("div","card-row meta-line");
+    row.appendChild(el("span", null, m.runtimeMinutes ? (m.runtimeMinutes + " min") : ""));
+    row.appendChild(el("span", null, m.lastWatched ? ("Last watched " + escapeHtml(formatDate(m.lastWatched))) : ""));
+    info.appendChild(row);
   }
-  if(m.lastWatched){
-    info.appendChild(el("div","meta-line","Last watched " + escapeHtml(formatDate(m.lastWatched))));
+
+  // Where to watch — only the platforms actually set on this movie
+  if(m.platforms && m.platforms.length){
+    const platformLine = el("div","badges");
+    m.platforms.forEach(p => platformLine.appendChild(el("span","badge", escapeHtml(p))));
+    info.appendChild(platformLine);
   }
+
+  // Price, on its own bold line
   {
-    const badges = el("div","badges");
     const priceTier = computePriceTier(m);
-    badges.appendChild(el("span","badge price-badge price-badge-"+priceTier.toLowerCase(), priceTier));
-    if(m.ageGroup) badges.appendChild(el("span","badge age-badge", escapeHtml(m.ageGroup)));
-    if(m.language) badges.appendChild(el("span","badge age-badge", escapeHtml(m.language)));
-    (m.platforms||[]).forEach(p => badges.appendChild(el("span","badge", escapeHtml(p))));
-    info.appendChild(badges);
+    const priceLine = el("div","price-line");
+    priceLine.appendChild(el("span","badge price-badge price-badge-"+priceTier.toLowerCase(), priceTier));
+    info.appendChild(priceLine);
   }
+
+  // Age group + language, grouped in their own box
+  if(m.ageGroup || m.language){
+    const tagBox = el("div","tag-box");
+    if(m.ageGroup) tagBox.appendChild(el("span","badge age-badge", escapeHtml(m.ageGroup)));
+    if(m.language) tagBox.appendChild(el("span","badge age-badge", escapeHtml(m.language)));
+    info.appendChild(tagBox);
+  }
+
+  if(m.familyRating){
+    info.appendChild(el("div","meta-line rating-line", starLabel(m.familyRating)));
+  }
+
   if(m.notes){
     info.appendChild(el("p","notes", escapeHtml(m.notes)));
   }
