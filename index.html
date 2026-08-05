@@ -777,7 +777,7 @@
   <div class="modal" role="dialog" aria-labelledby="bulkAddTitle" aria-modal="true">
     <button class="modal-close" id="closeBulkAddBtn" aria-label="Close">&times;</button>
     <h2 id="bulkAddTitle">Bulk Add Movies</h2>
-    <p class="hint">Paste a list of titles, one per line. With a TMDB key set in Settings (&#9881;), each one is looked up automatically for its cover, trailer, runtime, and platforms.</p>
+    <p class="hint">Paste a list of titles, one per line. With a TMDB key set in Settings (&#9881;), each one is looked up automatically for its cover, trailer, runtime, and platforms &mdash; titles typed in Russian are matched and saved under their English name.</p>
     <form class="add-form" id="bulkAddForm">
       <div class="field">
         <label for="bulkTitlesInput">Titles</label>
@@ -1005,13 +1005,25 @@ function mapProviderName(name){
   return hit ? hit.platform : null;
 }
 
+function looksCyrillic(text){
+  return /[Ѐ-ӿ]/.test(text);
+}
+
 async function lookupTmdbMetadata(title){
   if(!TMDB_KEY) return null;
   try{
-    const search = await tmdbFetch("/search/movie", { query: title });
+    // Search in the title's own language when it's Russian, so TMDB matches against its
+    // Russian localized titles instead of failing to find a Latin-script match.
+    const searchParams = looksCyrillic(title) ? { query: title, language: "ru-RU" } : { query: title };
+    let search = await tmdbFetch("/search/movie", searchParams);
+    if((!search.results || !search.results.length) && searchParams.language){
+      search = await tmdbFetch("/search/movie", { query: title }); // fall back to an unlocalized search
+    }
     if(!search.results || !search.results.length) return null;
     const top = search.results[0];
-    const details = await tmdbFetch("/movie/" + top.id, { append_to_response: "credits,release_dates,watch/providers" });
+    // Always fetch details in English so we get TMDB's standard English title back,
+    // regardless of what language the search was matched in.
+    const details = await tmdbFetch("/movie/" + top.id, { append_to_response: "credits,release_dates,watch/providers", language: "en-US" });
     const crew = (details.credits && details.credits.crew) || [];
     const directorObj = crew.find(c => c.job === "Director");
     const seenWriters = new Set();
@@ -1046,6 +1058,7 @@ async function lookupTmdbMetadata(title){
 
     return {
       id: top.id,
+      resolvedTitle: details.title || top.title || title,
       year: (details.release_date || "").slice(0,4),
       posterPath: details.poster_path,
       runtime: details.runtime || null,
@@ -1831,12 +1844,22 @@ document.getElementById("bulkAddForm").addEventListener("submit", async (e) => {
 
   const newMovies = [];
   let unmatchedCount = 0;
+  let translatedCount = 0;
   for(let i = 0; i < toAdd.length; i++){
-    const title = toAdd[i];
-    progress.textContent = `Adding ${i+1} of ${toAdd.length}: ${title}…`;
+    const typedTitle = toAdd[i];
+    progress.textContent = `Adding ${i+1} of ${toAdd.length}: ${typedTitle}…`;
 
-    const tmdb = TMDB_KEY ? await lookupTmdbMetadata(title) : null;
+    const tmdb = TMDB_KEY ? await lookupTmdbMetadata(typedTitle) : null;
     if(!tmdb) unmatchedCount++;
+
+    // If it was typed in Russian, use TMDB's English title instead of the Russian one.
+    let title = typedTitle;
+    if(tmdb && tmdb.resolvedTitle && looksCyrillic(typedTitle) && tmdb.resolvedTitle !== typedTitle){
+      title = tmdb.resolvedTitle;
+      translatedCount++;
+      progress.textContent = `Adding ${i+1} of ${toAdd.length}: ${typedTitle} → ${title}…`;
+    }
+
     let youtubeId = "";
     if(tmdb){
       const trailerUrl = await findTrailerUrl(tmdb.id);
@@ -1868,6 +1891,7 @@ document.getElementById("bulkAddForm").addEventListener("submit", async (e) => {
   refreshSuggestionsGrid();
 
   let summary = `Added ${newMovies.length} movie${newMovies.length===1?"":"s"}.`;
+  if(translatedCount) summary += ` Translated ${translatedCount} Russian title${translatedCount===1?"":"s"} to English.`;
   if(skippedCount) summary += ` Skipped ${skippedCount} already in your library.`;
   if(unmatchedCount) summary += ` ${unmatchedCount} couldn't be matched on TMDB — added with just the title; edit them to fill in the rest.`;
   progress.textContent = summary;
