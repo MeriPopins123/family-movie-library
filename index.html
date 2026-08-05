@@ -148,6 +148,13 @@
     box-shadow: none;
   }
   .settings-btn:hover{ color: var(--gold); border-color: var(--gold-dim); transform:none; box-shadow:none; }
+  .explore-btn{
+    background: var(--focus);
+    color: #0b2e2d;
+    box-shadow: 0 6px 18px rgba(127,219,218,0.25);
+    margin-left: auto;
+  }
+  .explore-btn:hover{ box-shadow: 0 8px 22px rgba(127,219,218,0.35); }
 
   .chip-row{
     max-width: 1100px;
@@ -634,8 +641,8 @@
     <input type="text" id="searchInput" placeholder="Search titles..." aria-label="Search movies by title">
   </div>
   <button class="add-btn settings-btn" id="openSettingsBtn" title="Set up suggestions" aria-label="Suggestions settings">&#9881;</button>
-  <button class="add-btn" id="exploreBtn">&#128269; Explore new</button>
   <button class="add-btn" id="openAddBtn">+ Add a movie</button>
+  <button class="add-btn explore-btn" id="exploreBtn">&#128269; Explore new</button>
 </div>
 
 <div class="chip-row" id="platformChips"></div>
@@ -1479,9 +1486,6 @@ function buildSuggestionCard(r){
   }
   const info = el("div","ticket-info");
   info.appendChild(el("h3", null, escapeHtml(r.title) + (r.year ? ` (${r.year})` : "")));
-  if(r.voteAverage){
-    info.appendChild(el("div","meta-line rating-line", "&#9733; " + r.voteAverage.toFixed(1) + "/10"));
-  }
   if(r.runtime){
     info.appendChild(el("div","meta-line", r.runtime + " min"));
   }
