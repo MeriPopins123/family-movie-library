@@ -1491,7 +1491,7 @@ function buildSuggestionCard(r){
   }
   const badges = el("div","badges");
   (r.platforms || []).forEach(p => badges.appendChild(el("span","badge", escapeHtml(p))));
-  [...r.reasons].forEach(reason => badges.appendChild(el("span","badge reason-badge", escapeHtml(reason))));
+  [...r.reasons].filter(reason => !reason.startsWith("Stars ")).forEach(reason => badges.appendChild(el("span","badge reason-badge", escapeHtml(reason))));
   info.appendChild(badges);
   const actions = el("div","ticket-actions");
   if(r.imdbId){
