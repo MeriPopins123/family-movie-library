@@ -774,14 +774,8 @@
         </div>
       </div>
       <div class="field">
-        <label for="ageGroupInput">Age group</label>
-        <select id="ageGroupInput">
-          <option value="">Auto-detect if possible / not set</option>
-          <option value="Very young">Very young</option>
-          <option value="Young">Young</option>
-          <option value="Teens">Teens</option>
-          <option value="Adults">Adults</option>
-        </select>
+        <label>Age group (leave blank to auto-detect)</label>
+        <div class="platform-grid" id="ageGroupCheckboxes"></div>
       </div>
       <div class="field">
         <label for="languageInput">Language</label>
@@ -1005,6 +999,13 @@ function sortBySeenDate(list, mode){
 }
 
 const AGE_GROUPS = ["Very young", "Young", "Teens", "Adults"];
+// Age group is now multi-select (m.ageGroups); older movies still saved with a single
+// string in m.ageGroup are read as a one-item list so nothing looks unset after the change.
+function movieAgeGroups(m){
+  if(m.ageGroups && m.ageGroups.length) return m.ageGroups;
+  if(m.ageGroup) return [m.ageGroup];
+  return [];
+}
 const LANGUAGES = ["English", "Russian", "Hebrew", "French", "Silent", "Other"];
 const FAMILY_RATINGS = [1,2,3,4,5,6,7,8,9,10];
 const PRICE_TIERS = ["Free","Stream","Rent","Buy","Unavailable"];
@@ -1508,7 +1509,7 @@ function render(){
     if(activePlatformFilters.size && !(m.platforms||[]).some(p => activePlatformFilters.has(p))) return false;
     if(activePersonFilters.size && !(m.likedBy||[]).some(p => activePersonFilters.has(p))) return false;
     if(activeRuntimeFilters.size && !activeRuntimeFilters.has(runtimeBucket(m.runtimeMinutes))) return false;
-    if(activeAgeGroupFilters.size && !activeAgeGroupFilters.has(m.ageGroup)) return false;
+    if(activeAgeGroupFilters.size && !movieAgeGroups(m).some(g => activeAgeGroupFilters.has(g))) return false;
     if(activeLanguageFilters.size && !activeLanguageFilters.has(m.language)) return false;
     if(activeRatingFilters.size && !activeRatingFilters.has(m.familyRating)) return false;
     if(activePriceFilters.size && !activePriceFilters.has(computePriceTier(m))) return false;
@@ -1588,10 +1589,11 @@ function buildCard(m){
     info.appendChild(priceLine);
   }
 
-  // Age group + language, grouped in their own box
-  if(m.ageGroup || m.language){
+  // Age group(s) + language, grouped in their own box
+  const ageGroups = movieAgeGroups(m);
+  if(ageGroups.length || m.language){
     const tagBox = el("div","tag-box");
-    if(m.ageGroup) tagBox.appendChild(el("span","badge age-badge", escapeHtml(m.ageGroup)));
+    ageGroups.forEach(g => tagBox.appendChild(el("span","badge age-badge", escapeHtml(g))));
     if(m.language) tagBox.appendChild(el("span","badge age-badge", escapeHtml(m.language)));
     info.appendChild(tagBox);
   }
@@ -1871,6 +1873,19 @@ function buildLikedByCheckboxes(){
   });
 }
 
+function buildAgeGroupCheckboxes(){
+  const wrap = document.getElementById("ageGroupCheckboxes");
+  wrap.innerHTML = "";
+  AGE_GROUPS.forEach(g => {
+    const label = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = g; cb.name = "ageGroup";
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(g));
+    wrap.appendChild(label);
+  });
+}
+
 let editingMovieId = null;
 let draftManualCredits = { director: "", studio: "", writers: "", actors: "", year: "" };
 let draftCoverUrl = null;
@@ -2020,7 +2035,6 @@ function openEditModal(m){
   document.getElementById("websiteUrlInput").value = m.websiteWatchUrl || "";
   document.getElementById("runtimeInput").value = m.runtimeMinutes || "";
   document.getElementById("lastWatchedInput").value = m.lastWatched || "";
-  document.getElementById("ageGroupInput").value = m.ageGroup || "";
   document.getElementById("languageInput").value = m.language || "";
   document.getElementById("familyRatingInput").value = m.familyRating || "";
   document.getElementById("priceInput").value = m.priceOverride || "";
@@ -2030,6 +2044,9 @@ function openEditModal(m){
   });
   document.querySelectorAll('#likedByCheckboxes input').forEach(cb => {
     cb.checked = (m.likedBy || []).includes(cb.value);
+  });
+  document.querySelectorAll('#ageGroupCheckboxes input').forEach(cb => {
+    cb.checked = movieAgeGroups(m).includes(cb.value);
   });
   document.getElementById("addOverlay").hidden = false;
   document.getElementById("titleInput").focus();
@@ -2236,7 +2253,7 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
   const manualPlatforms = [...document.querySelectorAll('#platformCheckboxes input:checked')].map(cb => cb.value);
   const manualRuntimeRaw = document.getElementById("runtimeInput").value.trim();
   const lastWatched = document.getElementById("lastWatchedInput").value || null;
-  const manualAgeGroup = document.getElementById("ageGroupInput").value || "";
+  const manualAgeGroups = [...document.querySelectorAll('#ageGroupCheckboxes input:checked')].map(cb => cb.value);
   const language = document.getElementById("languageInput").value || null;
   const familyRatingRaw = document.getElementById("familyRatingInput").value;
   const familyRating = familyRatingRaw ? parseInt(familyRatingRaw, 10) : null;
@@ -2268,16 +2285,16 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
 
   const manualRuntime = manualRuntimeRaw ? parseInt(manualRuntimeRaw, 10) : NaN;
   const runtimeMinutes = !isNaN(manualRuntime) ? manualRuntime : (tmdb && tmdb.runtime ? tmdb.runtime : null);
-  const ageGroup = manualAgeGroup || (tmdb && tmdb.suggestedAgeGroup ? tmdb.suggestedAgeGroup : null);
+  const ageGroups = manualAgeGroups.length ? manualAgeGroups : (tmdb && tmdb.suggestedAgeGroup ? [tmdb.suggestedAgeGroup] : []);
   const platforms = manualPlatforms.length ? manualPlatforms : (tmdb && tmdb.suggestedPlatforms ? tmdb.suggestedPlatforms : []);
 
   if(editingMovieId){
     const idx = movies.findIndex(x => x.id === editingMovieId);
     if(idx !== -1){
-      movies[idx] = { id: editingMovieId, title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroup, language, familyRating, priceOverride, manualCredits, customPosterUrl: draftCoverUrl, tmdb };
+      movies[idx] = { id: editingMovieId, title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroups, language, familyRating, priceOverride, manualCredits, customPosterUrl: draftCoverUrl, tmdb };
     }
   }else{
-    movies.unshift({ id: uid(), title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroup, language, familyRating, priceOverride, manualCredits, customPosterUrl: draftCoverUrl, tmdb });
+    movies.unshift({ id: uid(), title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroups, language, familyRating, priceOverride, manualCredits, customPosterUrl: draftCoverUrl, tmdb });
   }
   await saveMovies();
   closeAddModal();
@@ -2326,6 +2343,7 @@ function init(){
   loadShownSuggestionIds();
   buildPlatformCheckboxes();
   buildLikedByCheckboxes();
+  buildAgeGroupCheckboxes();
   if(CONFIG_IS_PLACEHOLDER){
     document.getElementById("configBanner").hidden = false;
     return;
