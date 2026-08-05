@@ -623,6 +623,14 @@
 
   /* ---------- Suggestions ---------- */
   .explore-modal{ max-width: 900px; }
+  .just-added-overlay{ z-index: 60; } /* sits above the Explore window (z-index 50) */
+  .just-added-modal{
+    max-width: 340px;
+    text-align: center;
+  }
+  .just-added-modal h2{ font-size: 1.3rem; }
+  .just-added-modal .grid{ padding: 0; margin: 12px 0 4px; grid-template-columns: 1fr; }
+  .just-added-modal .form-actions{ justify-content: center; }
   .suggestions-header{
     display:flex;
     align-items:center;
@@ -950,6 +958,18 @@
     </div>
     <p class="hint" id="suggestionsHint"></p>
     <div class="grid suggestions-grid" id="suggestionsGrid"></div>
+  </div>
+</div>
+
+<!-- Preview of a movie just quick-added from Explore, shown above the Explore window -->
+<div class="overlay just-added-overlay" id="justAddedOverlay" hidden>
+  <div class="modal just-added-modal" role="dialog" aria-labelledby="justAddedTitle" aria-modal="true">
+    <button class="modal-close" id="closeJustAddedBtn" aria-label="Close">&times;</button>
+    <h2 id="justAddedTitle">&#10003; Added to your library</h2>
+    <div class="grid" id="justAddedCardContainer"></div>
+    <div class="form-actions">
+      <button type="button" class="btn-primary" id="dismissJustAddedBtn">Keep exploring</button>
+    </div>
   </div>
 </div>
 
@@ -1859,6 +1879,7 @@ async function findTrailerUrl(tmdbId){
 
 function quickAddFromSuggestion(r){
   openAddModal();
+  addedFromExplore = true; // openAddModal() just reset this — set it after, so we know to preview the card
   document.getElementById("titleInput").value = r.title;
   runTitleAutofill(); // fills cover, platforms, runtime, trailer & credits just like typing the title would
 }
@@ -2037,8 +2058,11 @@ function readAndCompressImage(file){
   });
 }
 
+let addedFromExplore = false; // set by quickAddFromSuggestion() so we know to preview the new card afterward
+
 function openAddModal(){
   editingMovieId = null;
+  addedFromExplore = false;
   draftManualCredits = { director: "", studio: "", writers: "", actors: "", year: "" };
   draftCoverUrl = null;
   draftTmdbLookup = null;
@@ -2111,7 +2135,7 @@ document.getElementById("watchOverlay").addEventListener("click", (e) => { if(e.
 document.getElementById("exploreOverlay").addEventListener("click", (e) => { if(e.target.id==="exploreOverlay") closeExploreModal(); });
 document.getElementById("bulkAddOverlay").addEventListener("click", (e) => { if(e.target.id==="bulkAddOverlay") closeBulkAddModal(); });
 document.addEventListener("keydown", (e) => {
-  if(e.key === "Escape"){ closeAddModal(); closePlayer(); closeSettings(); closeWatchOptions(); closeDetails(); closeExploreModal(); closeBulkAddModal(); }
+  if(e.key === "Escape"){ closeAddModal(); closePlayer(); closeSettings(); closeWatchOptions(); closeDetails(); closeExploreModal(); closeBulkAddModal(); closeJustAddedCard(); }
 });
 
 function openBulkAddModal(){
@@ -2203,6 +2227,19 @@ function openExploreModal(){
 function closeExploreModal(){
   document.getElementById("exploreOverlay").hidden = true;
 }
+
+function showJustAddedCard(movie){
+  const container = document.getElementById("justAddedCardContainer");
+  container.innerHTML = "";
+  container.appendChild(buildCard(movie));
+  document.getElementById("justAddedOverlay").hidden = false;
+}
+function closeJustAddedCard(){
+  document.getElementById("justAddedOverlay").hidden = true;
+}
+document.getElementById("closeJustAddedBtn").onclick = closeJustAddedCard;
+document.getElementById("dismissJustAddedBtn").onclick = closeJustAddedCard;
+document.getElementById("justAddedOverlay").addEventListener("click", (e) => { if(e.target.id==="justAddedOverlay") closeJustAddedCard(); });
 
 document.getElementById("coverFileInput").addEventListener("change", async (e) => {
   const file = e.target.files && e.target.files[0];
@@ -2318,18 +2355,24 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
   const ageGroups = manualAgeGroups.length ? manualAgeGroups : (tmdb && tmdb.suggestedAgeGroup ? [tmdb.suggestedAgeGroup] : []);
   const platforms = manualPlatforms.length ? manualPlatforms : (tmdb && tmdb.suggestedPlatforms ? tmdb.suggestedPlatforms : []);
 
+  let newMovie = null;
   if(editingMovieId){
     const idx = movies.findIndex(x => x.id === editingMovieId);
     if(idx !== -1){
       movies[idx] = { id: editingMovieId, title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroups, language, familyRating, priceOverride, manualCredits, customPosterUrl: draftCoverUrl, tmdb };
     }
   }else{
-    movies.unshift({ id: uid(), title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroups, language, familyRating, priceOverride, manualCredits, customPosterUrl: draftCoverUrl, tmdb });
+    newMovie = { id: uid(), title, youtubeId, websiteWatchUrl, platforms, likedBy, notes, runtimeMinutes, lastWatched, ageGroups, language, familyRating, priceOverride, manualCredits, customPosterUrl: draftCoverUrl, tmdb };
+    movies.unshift(newMovie);
   }
   await saveMovies();
   closeAddModal();
   render();
   refreshSuggestionsGrid();
+  if(addedFromExplore && newMovie && !document.getElementById("exploreOverlay").hidden){
+    showJustAddedCard(newMovie);
+  }
+  addedFromExplore = false;
 });
 
 document.getElementById("openSettingsBtn").onclick = () => {
