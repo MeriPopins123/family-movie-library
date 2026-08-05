@@ -942,6 +942,21 @@ function saveTmdbKey(value){
   localStorage.setItem("tmdbApiKey", TMDB_KEY);
 }
 
+function loadShownSuggestionIds(){
+  try{
+    shownSuggestionIds = new Set(JSON.parse(localStorage.getItem("shownSuggestionIds") || "[]"));
+  }catch(e){
+    shownSuggestionIds = new Set();
+  }
+}
+
+function saveShownSuggestionIds(){
+  // keep only the most recent 500 so this doesn't grow forever on this device
+  const trimmed = [...shownSuggestionIds].slice(-500);
+  shownSuggestionIds = new Set(trimmed);
+  localStorage.setItem("shownSuggestionIds", JSON.stringify(trimmed));
+}
+
 async function tmdbFetch(path, params){
   params = params || {};
   const url = new URL("https://api.themoviedb.org/3" + path);
@@ -1102,6 +1117,7 @@ async function findSuggestions(){
   list.sort((a,b) => (b.score - a.score) || (b.popularity - a.popularity));
   const top = list.slice(0,9);
   top.forEach(r => shownSuggestionIds.add(r.id));
+  saveShownSuggestionIds();
 
   // Enrich the final picks with rating, runtime, streaming platforms & an IMDB link
   await Promise.all(top.map(async (r) => {
@@ -1521,6 +1537,7 @@ function buildSuggestionCard(r){
 function dismissSuggestion(id){
   lastSuggestionResults = lastSuggestionResults.filter(r => r.id !== id);
   shownSuggestionIds.add(id); // never resurface it, even on a later "Find suggestions" click
+  saveShownSuggestionIds();
   const grid = document.getElementById("suggestionsGrid");
   const card = grid.querySelector(`[data-suggestion-id="${id}"]`);
   if(card) card.remove();
@@ -1937,6 +1954,7 @@ document.getElementById("codeGateForm").addEventListener("submit", (e) => {
 
 function init(){
   loadTmdbKey();
+  loadShownSuggestionIds();
   buildPlatformCheckboxes();
   buildLikedByCheckboxes();
   if(CONFIG_IS_PLACEHOLDER){
