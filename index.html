@@ -199,6 +199,13 @@
     border-color: var(--red);
     color: var(--cream);
   }
+  .chip.excluded{
+    background: transparent;
+    border: 2px dashed var(--red);
+    color: var(--red);
+    text-decoration: line-through;
+  }
+  .chip.excluded:hover{ border-color: var(--red); color: var(--red); }
 
   /* ---------- Grid & ticket cards ---------- */
   .grid{
@@ -971,7 +978,7 @@ let movies = [];
 let shownSuggestionIds = new Set(); // ids already surfaced this session, so re-searching finds fresh ones
 let lastSuggestionResults = []; // last batch shown, so we can prune it live as movies get added
 let activePlatformFilters = new Set();
-let activePersonFilters = new Set();
+let activePersonFilters = new Map(); // name -> "include" | "exclude"
 let activeRuntimeFilters = new Set();
 let activeAgeGroupFilters = new Set();
 let activeLanguageFilters = new Set();
@@ -1477,9 +1484,34 @@ function buildMultiChipRow(containerId, label, options, activeSet, formatLabel){
   });
 }
 
+// "Liked by" is tri-state per chip: neutral -> include (must be one of these) ->
+// exclude (must NOT be any of these) -> back to neutral. Lets you say "everything Mama liked"
+// as easily as "everything except what Others liked."
+function renderPeopleChips(){
+  const row = document.getElementById("peopleChips");
+  row.innerHTML = "";
+  row.appendChild(el("span","chip-group-label","Liked by"));
+  LIKED_BY_OPTIONS.forEach(name => {
+    const state = activePersonFilters.get(name); // undefined | "include" | "exclude"
+    const cls = "chip" + (state === "include" ? " active" : state === "exclude" ? " excluded" : "");
+    const label = state === "exclude" ? "✕ " + name : name;
+    const chip = el("button", cls, label);
+    chip.title = state === "include" ? "Showing only movies liked by " + name + " — click to exclude instead"
+      : state === "exclude" ? "Hiding movies liked by " + name + " — click to clear"
+      : "Click to show only movies liked by " + name;
+    chip.onclick = () => {
+      if(state === undefined) activePersonFilters.set(name, "include");
+      else if(state === "include") activePersonFilters.set(name, "exclude");
+      else activePersonFilters.delete(name);
+      render();
+    };
+    row.appendChild(chip);
+  });
+}
+
 function renderChips(){
   buildMultiChipRow("platformChips", "Platform", PLATFORMS, activePlatformFilters);
-  buildMultiChipRow("peopleChips", "Liked by", LIKED_BY_OPTIONS, activePersonFilters);
+  renderPeopleChips();
   buildMultiChipRow("runtimeChips", "Length", RUNTIME_BUCKETS, activeRuntimeFilters);
 
   const recencyChips = document.getElementById("recencyChips");
@@ -1507,7 +1539,13 @@ function render(){
   const filtered = movies.filter(m => {
     if(query && !m.title.toLowerCase().includes(query)) return false;
     if(activePlatformFilters.size && !(m.platforms||[]).some(p => activePlatformFilters.has(p))) return false;
-    if(activePersonFilters.size && !(m.likedBy||[]).some(p => activePersonFilters.has(p))) return false;
+    if(activePersonFilters.size){
+      const likedBy = m.likedBy || [];
+      const included = [...activePersonFilters].filter(([,state]) => state === "include").map(([name]) => name);
+      const excluded = [...activePersonFilters].filter(([,state]) => state === "exclude").map(([name]) => name);
+      if(included.length && !likedBy.some(p => included.includes(p))) return false;
+      if(excluded.length && likedBy.some(p => excluded.includes(p))) return false;
+    }
     if(activeRuntimeFilters.size && !activeRuntimeFilters.has(runtimeBucket(m.runtimeMinutes))) return false;
     if(activeAgeGroupFilters.size && !movieAgeGroups(m).some(g => activeAgeGroupFilters.has(g))) return false;
     if(activeLanguageFilters.size && !activeLanguageFilters.has(m.language)) return false;
