@@ -852,7 +852,7 @@
   <div class="modal" role="dialog" aria-labelledby="bulkAddTitle" aria-modal="true">
     <button class="modal-close" id="closeBulkAddBtn" aria-label="Close">&times;</button>
     <h2 id="bulkAddTitle">Bulk Add Movies</h2>
-    <p class="hint">Paste a list of titles, one per line. With a TMDB key set in Settings (&#9881;), each one is looked up automatically for its cover, trailer, runtime, and platforms. Titles are always saved exactly as typed, whatever language they're in.</p>
+    <p class="hint">Paste a list of titles or links (YouTube, TMDB, or IMDb), one per line. With a TMDB key set in Settings (&#9881;), each one is looked up automatically for its cover, trailer, runtime, and platforms. Typed titles are always saved exactly as typed, whatever language they're in; a link resolves to the movie's actual title.</p>
     <form class="add-form" id="bulkAddForm">
       <div class="field">
         <label for="bulkTitlesInput">Titles</label>
@@ -1244,10 +1244,21 @@ async function lookupTmdbMetadata(title){
       search = await tmdbFetch("/search/movie", { query: title }); // fall back to an unlocalized search
     }
     if(!search.results || !search.results.length) return null;
-    const top = search.results[0];
+    return await fetchTmdbDetailsById(search.results[0].id, title);
+  }catch(e){
+    console.error("TMDB lookup failed:", e);
+    return null;
+  }
+}
+
+// Same enrichment as lookupTmdbMetadata(), but starting from a known TMDB id instead of a
+// text search — used when the user pastes a TMDB or IMDb link instead of typing a title.
+async function fetchTmdbDetailsById(tmdbId, fallbackTitle){
+  if(!TMDB_KEY) return null;
+  try{
     // Always fetch details in English so we get TMDB's standard English title back,
     // regardless of what language the search was matched in.
-    const details = await tmdbFetch("/movie/" + top.id, { append_to_response: "credits,release_dates,watch/providers", language: "en-US" });
+    const details = await tmdbFetch("/movie/" + tmdbId, { append_to_response: "credits,release_dates,watch/providers", language: "en-US" });
     const crew = (details.credits && details.credits.crew) || [];
     const directorObj = crew.find(c => c.job === "Director");
     const seenWriters = new Set();
@@ -1290,8 +1301,8 @@ async function lookupTmdbMetadata(title){
     }
 
     return {
-      id: top.id,
-      resolvedTitle: details.title || top.title || title,
+      id: tmdbId,
+      resolvedTitle: details.title || fallbackTitle || null,
       year: (details.release_date || "").slice(0,4),
       posterPath: details.poster_path,
       runtime: details.runtime || null,
@@ -1309,6 +1320,98 @@ async function lookupTmdbMetadata(title){
     console.error("TMDB lookup failed:", e);
     return null;
   }
+}
+
+async function lookupTmdbMetadataById(tmdbId){
+  return await fetchTmdbDetailsById(tmdbId, null);
+}
+
+async function lookupTmdbMetadataByImdbId(imdbId){
+  if(!TMDB_KEY) return null;
+  try{
+    const find = await tmdbFetch("/find/" + imdbId, { external_source: "imdb_id" });
+    const top = find.movie_results && find.movie_results[0];
+    if(!top) return null;
+    return await fetchTmdbDetailsById(top.id, top.title);
+  }catch(e){
+    console.error("TMDB find-by-IMDb failed:", e);
+    return null;
+  }
+}
+
+// Strips common trailer/upload noise off a YouTube video title so it works as a search query —
+// e.g. "Encanto | Official Trailer | Disney+" -> "Encanto"
+function cleanYoutubeVideoTitle(raw){
+  return (raw || "")
+    .replace(/\bofficial\s*(movie\s*)?trailer\b/gi, "")
+    .replace(/\bofficial\s*teaser\b/gi, "")
+    .replace(/\bteaser\s*trailer\b/gi, "")
+    .replace(/\btrailer\b/gi, "")
+    .replace(/\bteaser\b/gi, "")
+    .replace(/\(\s*\)/g, "")
+    .split(/[|｜]|(?:\s[-–—]\s)/)[0]
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+// Recognizes a pasted YouTube, TMDB, or IMDb link and resolves it to a movie title/id so the
+// same autofill flow that works from a typed title can run from a link instead.
+async function resolveLinkToMovie(input){
+  let url;
+  try{ url = new URL(input.trim()); }catch(e){ return null; }
+  const host = url.hostname.replace(/^www\.|^m\./, "");
+
+  if(host === "youtube.com" || host === "youtu.be" || host === "youtube-nocookie.com"){
+    const videoId = extractYoutubeId(input);
+    if(!videoId) return null;
+    try{
+      const oembedUrl = "https://www.youtube.com/oembed?url=" + encodeURIComponent("https://www.youtube.com/watch?v=" + videoId) + "&format=json";
+      const res = await fetch(oembedUrl);
+      if(!res.ok) return null;
+      const data = await res.json();
+      const title = cleanYoutubeVideoTitle(data.title);
+      if(!title) return null;
+      return { title, youtubeId: videoId, source: "youtube" };
+    }catch(e){
+      console.error("YouTube oEmbed lookup failed:", e);
+      return null;
+    }
+  }
+
+  if(host === "themoviedb.org"){
+    const m = url.pathname.match(/\/movie\/(\d+)/);
+    if(!m) return null;
+    return { tmdbId: parseInt(m[1], 10), source: "tmdb" };
+  }
+
+  if(host === "imdb.com"){
+    const m = url.pathname.match(/\/title\/(tt\d+)/);
+    if(!m) return null;
+    return { imdbId: m[1], source: "imdb" };
+  }
+
+  return null;
+}
+
+// One entry point for "paste a title OR a link": resolves a link (YouTube/TMDB/IMDb) down to
+// a { title, tmdb } pair using the same enrichment as a normal title lookup, or treats the
+// input as a plain title if it isn't a recognized link at all.
+async function resolveInputToMovieInfo(input){
+  const link = await resolveLinkToMovie(input);
+  if(!link){
+    return { title: input, youtubeId: "", tmdb: TMDB_KEY ? await lookupTmdbMetadata(input) : null };
+  }
+  if(link.tmdbId){
+    const tmdb = await lookupTmdbMetadataById(link.tmdbId);
+    return { title: (tmdb && tmdb.resolvedTitle) || input, youtubeId: "", tmdb };
+  }
+  if(link.imdbId){
+    const tmdb = await lookupTmdbMetadataByImdbId(link.imdbId);
+    return { title: (tmdb && tmdb.resolvedTitle) || input, youtubeId: "", tmdb };
+  }
+  // YouTube link: use the cleaned video title both as the search query and as the movie's title
+  const tmdb = TMDB_KEY ? await lookupTmdbMetadata(link.title) : null;
+  return { title: (tmdb && tmdb.resolvedTitle) || link.title, youtubeId: link.youtubeId, tmdb };
 }
 
 async function findSuggestions(){
@@ -1959,17 +2062,35 @@ function scheduleTitleAutofill(){
 async function runTitleAutofill(){
   clearTimeout(titleAutofillTimer);
   if(!TMDB_KEY && !YOUTUBE_KEY) return;
-  const title = document.getElementById("titleInput").value.trim();
-  if(!title || title.length < 2) return;
+  const rawInput = document.getElementById("titleInput").value.trim();
+  if(!rawInput || rawInput.length < 2) return;
 
   const hint = document.getElementById("autofillHint");
   hint.hidden = false;
-  hint.textContent = "Looking up \"" + title + "\"…";
+  hint.textContent = "Looking up \"" + rawInput + "\"…";
 
-  const result = TMDB_KEY ? await lookupTmdbMetadata(title) : null;
+  // Recognize a pasted YouTube/TMDB/IMDb link and resolve it to the actual movie instead of
+  // searching the raw URL as if it were a title.
+  const link = await resolveLinkToMovie(rawInput);
+  let title = rawInput;
+  let result = null;
+  let linkYoutubeId = "";
 
-  // bail quietly if the title moved on while we were fetching
-  if(document.getElementById("titleInput").value.trim() !== title){ hint.hidden = true; return; }
+  if(link){
+    hint.textContent = "Resolving link…";
+    if(link.tmdbId) result = await lookupTmdbMetadataById(link.tmdbId);
+    else if(link.imdbId) result = await lookupTmdbMetadataByImdbId(link.imdbId);
+    else if(link.youtubeId){
+      linkYoutubeId = link.youtubeId;
+      result = TMDB_KEY ? await lookupTmdbMetadata(link.title) : null;
+    }
+    if(document.getElementById("titleInput").value.trim() !== rawInput){ hint.hidden = true; return; }
+    title = (result && result.resolvedTitle) || link.title || rawInput;
+    document.getElementById("titleInput").value = title; // swap the pasted link for the real title
+  }else{
+    result = TMDB_KEY ? await lookupTmdbMetadata(title) : null;
+    if(document.getElementById("titleInput").value.trim() !== rawInput){ hint.hidden = true; return; }
+  }
 
   if(result){
     draftTmdbLookup = result;
@@ -1996,12 +2117,16 @@ async function runTitleAutofill(){
     hint.textContent = "Couldn't find a TMDB match for \"" + title + "\" — trying YouTube…";
   }
 
-  // 4. Video — an official TMDB trailer if we matched a movie, otherwise a plain YouTube
-  // search for the title. Only touches the field while it's still empty.
+  // 4. Video — a pasted YouTube link is used directly; otherwise an official TMDB trailer if
+  // we matched a movie, or a plain YouTube search for the title. Only touches an empty field.
   let video = null;
   const ytInput = document.getElementById("ytInput");
   if(!ytInput.value.trim()){
-    video = await findVideoForTitle(title, result && result.id, result && result.runtime);
+    if(linkYoutubeId){
+      video = { videoId: linkYoutubeId, url: "https://www.youtube.com/watch?v=" + linkYoutubeId, thumbnailUrl: `https://img.youtube.com/vi/${linkYoutubeId}/hqdefault.jpg` };
+    }else{
+      video = await findVideoForTitle(title, result && result.id, result && result.runtime);
+    }
     if(document.getElementById("titleInput").value.trim() === title && !ytInput.value.trim() && video){
       ytInput.value = video.url;
       // No TMDB poster available — fall back to the YouTube video's own thumbnail as the cover.
@@ -2170,18 +2295,28 @@ document.getElementById("bulkAddForm").addEventListener("submit", async (e) => {
 
   const newMovies = [];
   let unmatchedCount = 0;
+  let linkCount = 0;
   for(let i = 0; i < toAdd.length; i++){
-    const title = toAdd[i];
-    progress.textContent = `Adding ${i+1} of ${toAdd.length}: ${title}…`;
+    const rawInput = toAdd[i];
+    progress.textContent = `Adding ${i+1} of ${toAdd.length}: ${rawInput}…`;
 
-    // Still searches TMDB in Russian when the title is Cyrillic (so it can find the right
-    // movie), but the title you typed is always what gets saved — never auto-translated.
-    const tmdb = TMDB_KEY ? await lookupTmdbMetadata(title) : null;
+    // Each line can be a title (searched as typed — Russian titles stay in Russian, just
+    // matched via a Russian-language TMDB search) or a YouTube/TMDB/IMDb link, resolved to
+    // the actual movie.
+    const resolved = await resolveInputToMovieInfo(rawInput);
+    const title = resolved.title;
+    const tmdb = resolved.tmdb;
     if(!tmdb) unmatchedCount++;
+    if(resolved.youtubeId) linkCount++;
 
-    // Official TMDB trailer if we matched a movie, else a plain YouTube search for the title.
-    const video = await findVideoForTitle(title, tmdb && tmdb.id, tmdb && tmdb.runtime);
-    const youtubeId = video ? video.videoId : "";
+    // A YouTube link already gives us the trailer directly; otherwise fall back to an
+    // official TMDB trailer, or a plain YouTube search for the title.
+    let youtubeId = resolved.youtubeId;
+    let video = null;
+    if(!youtubeId){
+      video = await findVideoForTitle(title, tmdb && tmdb.id, tmdb && tmdb.runtime);
+      youtubeId = video ? video.videoId : "";
+    }
     // No TMDB poster to fall back on — use the YouTube video's own thumbnail as the cover.
     const customPosterUrl = (video && video.thumbnailUrl && !(tmdb && tmdb.posterPath)) ? video.thumbnailUrl : null;
 
@@ -2210,6 +2345,7 @@ document.getElementById("bulkAddForm").addEventListener("submit", async (e) => {
   refreshSuggestionsGrid();
 
   let summary = `Added ${newMovies.length} movie${newMovies.length===1?"":"s"}.`;
+  if(linkCount) summary += ` Resolved ${linkCount} link${linkCount===1?"":"s"} to its trailer automatically.`;
   if(skippedCount) summary += ` Skipped ${skippedCount} already in your library.`;
   if(unmatchedCount) summary += ` ${unmatchedCount} couldn't be matched on TMDB — added with just the title; edit them to fill in the rest.`;
   progress.textContent = summary;
