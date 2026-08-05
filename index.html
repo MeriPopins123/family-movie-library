@@ -837,7 +837,7 @@
   <div class="modal" role="dialog" aria-labelledby="bulkAddTitle" aria-modal="true">
     <button class="modal-close" id="closeBulkAddBtn" aria-label="Close">&times;</button>
     <h2 id="bulkAddTitle">Bulk Add Movies</h2>
-    <p class="hint">Paste a list of titles, one per line. With a TMDB key set in Settings (&#9881;), each one is looked up automatically for its cover, trailer, runtime, and platforms &mdash; titles typed in Russian are matched and saved under their English name.</p>
+    <p class="hint">Paste a list of titles, one per line. With a TMDB key set in Settings (&#9881;), each one is looked up automatically for its cover, trailer, runtime, and platforms. Titles are always saved exactly as typed, whatever language they're in.</p>
     <form class="add-form" id="bulkAddForm">
       <div class="field">
         <label for="bulkTitlesInput">Titles</label>
@@ -2108,21 +2108,14 @@ document.getElementById("bulkAddForm").addEventListener("submit", async (e) => {
 
   const newMovies = [];
   let unmatchedCount = 0;
-  let translatedCount = 0;
   for(let i = 0; i < toAdd.length; i++){
-    const typedTitle = toAdd[i];
-    progress.textContent = `Adding ${i+1} of ${toAdd.length}: ${typedTitle}…`;
+    const title = toAdd[i];
+    progress.textContent = `Adding ${i+1} of ${toAdd.length}: ${title}…`;
 
-    const tmdb = TMDB_KEY ? await lookupTmdbMetadata(typedTitle) : null;
+    // Still searches TMDB in Russian when the title is Cyrillic (so it can find the right
+    // movie), but the title you typed is always what gets saved — never auto-translated.
+    const tmdb = TMDB_KEY ? await lookupTmdbMetadata(title) : null;
     if(!tmdb) unmatchedCount++;
-
-    // If it was typed in Russian, use TMDB's English title instead of the Russian one.
-    let title = typedTitle;
-    if(tmdb && tmdb.resolvedTitle && looksCyrillic(typedTitle) && tmdb.resolvedTitle !== typedTitle){
-      title = tmdb.resolvedTitle;
-      translatedCount++;
-      progress.textContent = `Adding ${i+1} of ${toAdd.length}: ${typedTitle} → ${title}…`;
-    }
 
     // Official TMDB trailer if we matched a movie, else a plain YouTube search for the title.
     const video = await findVideoForTitle(title, tmdb && tmdb.id, tmdb && tmdb.runtime);
@@ -2155,7 +2148,6 @@ document.getElementById("bulkAddForm").addEventListener("submit", async (e) => {
   refreshSuggestionsGrid();
 
   let summary = `Added ${newMovies.length} movie${newMovies.length===1?"":"s"}.`;
-  if(translatedCount) summary += ` Translated ${translatedCount} Russian title${translatedCount===1?"":"s"} to English.`;
   if(skippedCount) summary += ` Skipped ${skippedCount} already in your library.`;
   if(unmatchedCount) summary += ` ${unmatchedCount} couldn't be matched on TMDB — added with just the title; edit them to fill in the rest.`;
   progress.textContent = summary;
