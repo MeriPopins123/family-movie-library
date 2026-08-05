@@ -1071,14 +1071,9 @@ async function findSuggestions(){
     entry.score += weight;
   }
 
-  // Process our highest-rated movies first so that when a director/writer/studio/actor
-  // is shared across several library titles, the credit gets weighted by the best rating.
-  const ratedMoviesFirst = [...movies].sort((a,b) => (b.familyRating||0) - (a.familyRating||0));
+  const HIGH_RATING_CUTOFF = 5;
 
-  for(const m of ratedMoviesFirst){
-    if(!m.tmdb) continue;
-    const weight = m.familyRating || 1; // prefer credits from movies we rated highly
-
+  async function processMovie(m, weight){
     const d = m.tmdb.director;
     if(d && !doneDirectors.has(d.id)){
       doneDirectors.add(d.id);
@@ -1110,6 +1105,23 @@ async function findSuggestions(){
         const disc = await tmdbFetch("/discover/movie", { with_companies: s.id, sort_by: "popularity.desc" });
         (disc.results || []).forEach(c => addCandidate(c, "From " + s.name, weight));
       }catch(e){ /* skip on failure */ }
+    }
+  }
+
+  const taggedMovies = movies.filter(m => m.tmdb);
+  const highRated = taggedMovies.filter(m => (m.familyRating||0) >= HIGH_RATING_CUTOFF)
+    .sort((a,b) => (b.familyRating||0) - (a.familyRating||0));
+  const others = taggedMovies.filter(m => (m.familyRating||0) < HIGH_RATING_CUTOFF)
+    .sort((a,b) => (b.familyRating||0) - (a.familyRating||0));
+
+  // Base suggestions primarily on movies rated 5+ stars — give them a big weight boost.
+  for(const m of highRated){
+    await processMovie(m, m.familyRating * 3);
+  }
+  // Only fall back to lower-rated/unrated movies if the 5+ tier didn't produce much on its own.
+  if(candidateMap.size < 9){
+    for(const m of others){
+      await processMovie(m, m.familyRating || 1);
     }
   }
 
