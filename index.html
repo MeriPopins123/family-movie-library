@@ -173,6 +173,14 @@
     margin-right: 4px;
     align-self:center;
   }
+  .filters-bar{
+    justify-content:flex-end;
+    margin-top: -6px;
+  }
+  .filters-bar .settings-btn{
+    padding: 6px 16px;
+    font-size: 0.82rem;
+  }
   .chip{
     border: 1px solid var(--card-edge);
     background: transparent;
@@ -696,6 +704,9 @@
 <div class="chip-row" id="languageChips"></div>
 <div class="chip-row" id="ratingChips"></div>
 <div class="chip-row" id="priceChips"></div>
+<div class="chip-row filters-bar">
+  <button class="add-btn settings-btn" id="clearFiltersBtn" title="Clear all active filters">&#10005; Clear filters</button>
+</div>
 
 <main>
   <div class="grid" id="grid"></div>
@@ -2203,6 +2214,17 @@ document.getElementById("detailsForm").addEventListener("submit", (e) => {
 document.getElementById("searchInput").addEventListener("input", render);
 document.getElementById("titleInput").addEventListener("input", scheduleTitleAutofill);
 document.getElementById("titleInput").addEventListener("blur", runTitleAutofill);
+document.getElementById("clearFiltersBtn").onclick = () => {
+  activePlatformFilters.clear();
+  activePersonFilters.clear();
+  activeRuntimeFilters.clear();
+  activeAgeGroupFilters.clear();
+  activeLanguageFilters.clear();
+  activeRatingFilters.clear();
+  activePriceFilters.clear();
+  activeSeenSort = null;
+  render();
+};
 
 document.getElementById("addForm").addEventListener("submit", async (e) => {
   e.preventDefault();
