@@ -674,7 +674,7 @@
       <div class="field">
         <label for="titleInput">Title</label>
         <input type="text" id="titleInput" required placeholder="e.g. Encanto">
-        <p class="hint" id="autofillNote" style="margin-top:6px;">Tip: add a free TMDB key in Settings (&#9881;) and typing a title will auto-fill the cover, platforms, runtime, trailer link, and credits below.</p>
+        <p class="hint" id="autofillNote" style="margin-top:6px;">Tip: add a free TMDB key in Settings (&#9881;) and typing a title will auto-fill the cover, platforms, runtime, trailer link, and credits below. Add a YouTube key too so a video still gets found even when TMDB doesn't have a trailer.</p>
         <p class="hint" id="autofillHint" hidden style="margin-top:6px;color:var(--gold);"></p>
       </div>
       <div class="field">
@@ -842,6 +842,11 @@
         <input type="text" id="tmdbKeyInput" placeholder="Paste your key here">
         <p class="hint" style="margin-top:6px;">Get a free one at <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer">themoviedb.org/settings/api</a>. This is saved only on this device.</p>
       </div>
+      <div class="field">
+        <label for="youtubeKeyInput">YouTube API key &mdash; optional, finds a trailer/video on YouTube when TMDB doesn't have one</label>
+        <input type="text" id="youtubeKeyInput" placeholder="Paste your key here">
+        <p class="hint" style="margin-top:6px;">Free from <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener noreferrer">Google Cloud Console</a> &mdash; create a project, enable "YouTube Data API v3", then create an API key under Credentials. Also saved only on this device.</p>
+      </div>
       <div class="form-actions">
         <button type="button" class="btn-secondary" id="cancelSettingsBtn">Cancel</button>
         <button type="submit" class="btn-primary">Save</button>
@@ -950,6 +955,7 @@ function formatDate(iso){
   }catch(e){ return iso; }
 }
 let TMDB_KEY = "";
+let YOUTUBE_KEY = "";
 let FAMILY_CODE = "";
 let db = null;
 let unsubscribeLibrary = null;
@@ -961,6 +967,54 @@ function loadTmdbKey(){
 function saveTmdbKey(value){
   TMDB_KEY = value.trim();
   localStorage.setItem("tmdbApiKey", TMDB_KEY);
+}
+
+function loadYoutubeKey(){
+  YOUTUBE_KEY = localStorage.getItem("youtubeApiKey") || "";
+}
+
+function saveYoutubeKey(value){
+  YOUTUBE_KEY = value.trim();
+  localStorage.setItem("youtubeApiKey", YOUTUBE_KEY);
+}
+
+async function searchYoutubeVideo(query){
+  if(!YOUTUBE_KEY) return null;
+  try{
+    const url = new URL("https://www.googleapis.com/youtube/v3/search");
+    url.searchParams.set("part", "snippet");
+    url.searchParams.set("q", query);
+    url.searchParams.set("type", "video");
+    url.searchParams.set("maxResults", "1");
+    url.searchParams.set("key", YOUTUBE_KEY);
+    const res = await fetch(url.toString());
+    if(!res.ok) return null;
+    const data = await res.json();
+    const item = data.items && data.items[0];
+    const videoId = item && item.id && item.id.videoId;
+    if(!videoId) return null;
+    return {
+      videoId,
+      url: "https://www.youtube.com/watch?v=" + videoId,
+      thumbnailUrl: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+    };
+  }catch(e){
+    console.error("YouTube search failed:", e);
+    return null;
+  }
+}
+
+// Prefer an official TMDB trailer; fall back to a plain YouTube search for the title
+// when there's no trailer on file (or no TMDB match at all).
+async function findVideoForTitle(title, tmdbId){
+  if(tmdbId){
+    const trailerUrl = await findTrailerUrl(tmdbId);
+    if(trailerUrl){
+      const videoId = extractYoutubeId(trailerUrl);
+      return { url: trailerUrl, videoId, thumbnailUrl: videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null };
+    }
+  }
+  return await searchYoutubeVideo(title);
 }
 
 function loadShownSuggestionIds(){
@@ -1654,7 +1708,7 @@ function scheduleTitleAutofill(){
 
 async function runTitleAutofill(){
   clearTimeout(titleAutofillTimer);
-  if(!TMDB_KEY) return;
+  if(!TMDB_KEY && !YOUTUBE_KEY) return;
   const title = document.getElementById("titleInput").value.trim();
   if(!title || title.length < 2) return;
 
@@ -1662,44 +1716,60 @@ async function runTitleAutofill(){
   hint.hidden = false;
   hint.textContent = "Looking up \"" + title + "\"…";
 
-  const result = await lookupTmdbMetadata(title);
+  const result = TMDB_KEY ? await lookupTmdbMetadata(title) : null;
 
   // bail quietly if the title moved on while we were fetching
   if(document.getElementById("titleInput").value.trim() !== title){ hint.hidden = true; return; }
 
-  if(!result){
-    hint.textContent = "Couldn't find a TMDB match for \"" + title + "\" — fill in the rest by hand.";
-    return;
-  }
-  hint.hidden = true;
-  draftTmdbLookup = result;
+  if(result){
+    draftTmdbLookup = result;
 
-  // 1. Cover — only if the user hasn't already set one
-  if(!draftCoverUrl && result.posterPath){
-    draftCoverUrl = `https://image.tmdb.org/t/p/w500${result.posterPath}`;
-    document.getElementById("coverUrlInput").value = draftCoverUrl;
-    updateCoverPreview();
+    // 1. Cover — only if the user hasn't already set one
+    if(!draftCoverUrl && result.posterPath){
+      draftCoverUrl = `https://image.tmdb.org/t/p/w500${result.posterPath}`;
+      document.getElementById("coverUrlInput").value = draftCoverUrl;
+      updateCoverPreview();
+    }
+
+    // 2. Where you watch it — only if nothing is checked yet
+    const platformBoxes = [...document.querySelectorAll('#platformCheckboxes input')];
+    if(result.suggestedPlatforms && result.suggestedPlatforms.length && !platformBoxes.some(cb => cb.checked)){
+      platformBoxes.forEach(cb => { cb.checked = result.suggestedPlatforms.includes(cb.value); });
+    }
+
+    // 3. Runtime — only if left blank
+    const runtimeInput = document.getElementById("runtimeInput");
+    if(!runtimeInput.value.trim() && result.runtime){
+      runtimeInput.value = result.runtime;
+    }
+  }else if(TMDB_KEY){
+    hint.textContent = "Couldn't find a TMDB match for \"" + title + "\" — trying YouTube…";
   }
 
-  // 2. Where you watch it — only if nothing is checked yet
-  const platformBoxes = [...document.querySelectorAll('#platformCheckboxes input')];
-  if(result.suggestedPlatforms && result.suggestedPlatforms.length && !platformBoxes.some(cb => cb.checked)){
-    platformBoxes.forEach(cb => { cb.checked = result.suggestedPlatforms.includes(cb.value); });
-  }
-
-  // 3. Runtime — only if left blank
-  const runtimeInput = document.getElementById("runtimeInput");
-  if(!runtimeInput.value.trim() && result.runtime){
-    runtimeInput.value = result.runtime;
-  }
-
-  // 4. YouTube trailer — only if left blank
+  // 4. Video — an official TMDB trailer if we matched a movie, otherwise a plain YouTube
+  // search for the title. Only touches the field while it's still empty.
+  let video = null;
   const ytInput = document.getElementById("ytInput");
   if(!ytInput.value.trim()){
-    const trailerUrl = await findTrailerUrl(result.id);
-    if(document.getElementById("titleInput").value.trim() === title && !ytInput.value.trim() && trailerUrl){
-      ytInput.value = trailerUrl;
+    video = await findVideoForTitle(title, result && result.id);
+    if(document.getElementById("titleInput").value.trim() === title && !ytInput.value.trim() && video){
+      ytInput.value = video.url;
+      // No TMDB poster available — fall back to the YouTube video's own thumbnail as the cover.
+      if(!draftCoverUrl && video.thumbnailUrl && !(result && result.posterPath)){
+        draftCoverUrl = video.thumbnailUrl;
+        document.getElementById("coverUrlInput").value = draftCoverUrl;
+        updateCoverPreview();
+      }
     }
+  }
+
+  if(!result && !video){
+    hint.hidden = false;
+    hint.textContent = TMDB_KEY
+      ? "Couldn't find a TMDB match or a YouTube video for \"" + title + "\" — fill in the rest by hand."
+      : "Couldn't find a YouTube video for \"" + title + "\" — fill in the rest by hand.";
+  }else{
+    hint.hidden = true;
   }
 
   // 5. Director/studio/writers/actors/year show up as soon as the details window is opened —
@@ -1748,7 +1818,7 @@ function openAddModal(){
   document.getElementById("ytError").textContent = "";
   document.getElementById("addTitle").textContent = "Add a Movie";
   document.getElementById("addSubmitBtn").textContent = "Save to library";
-  document.getElementById("autofillNote").hidden = !!TMDB_KEY;
+  document.getElementById("autofillNote").hidden = !!(TMDB_KEY && YOUTUBE_KEY);
   document.getElementById("autofillHint").hidden = true;
   updateCoverPreview();
   document.getElementById("addOverlay").hidden = false;
@@ -1765,7 +1835,7 @@ function openEditModal(m){
   document.getElementById("ytError").textContent = "";
   document.getElementById("addTitle").textContent = "Edit Movie";
   document.getElementById("addSubmitBtn").textContent = "Save changes";
-  document.getElementById("autofillNote").hidden = !!TMDB_KEY;
+  document.getElementById("autofillNote").hidden = !!(TMDB_KEY && YOUTUBE_KEY);
   document.getElementById("autofillHint").hidden = true;
   document.getElementById("titleInput").value = m.title || "";
   document.getElementById("coverUrlInput").value = (m.customPosterUrl && !m.customPosterUrl.startsWith("data:")) ? m.customPosterUrl : "";
@@ -1860,11 +1930,11 @@ document.getElementById("bulkAddForm").addEventListener("submit", async (e) => {
       progress.textContent = `Adding ${i+1} of ${toAdd.length}: ${typedTitle} → ${title}…`;
     }
 
-    let youtubeId = "";
-    if(tmdb){
-      const trailerUrl = await findTrailerUrl(tmdb.id);
-      if(trailerUrl) youtubeId = extractYoutubeId(trailerUrl);
-    }
+    // Official TMDB trailer if we matched a movie, else a plain YouTube search for the title.
+    const video = await findVideoForTitle(title, tmdb && tmdb.id);
+    const youtubeId = video ? video.videoId : "";
+    // No TMDB poster to fall back on — use the YouTube video's own thumbnail as the cover.
+    const customPosterUrl = (video && video.thumbnailUrl && !(tmdb && tmdb.posterPath)) ? video.thumbnailUrl : null;
 
     newMovies.push({
       id: uid(),
@@ -1880,7 +1950,7 @@ document.getElementById("bulkAddForm").addEventListener("submit", async (e) => {
       language: null,
       familyRating: null,
       manualCredits: null,
-      customPosterUrl: null,
+      customPosterUrl,
       tmdb
     });
   }
@@ -2028,6 +2098,7 @@ document.getElementById("addForm").addEventListener("submit", async (e) => {
 
 document.getElementById("openSettingsBtn").onclick = () => {
   document.getElementById("tmdbKeyInput").value = TMDB_KEY;
+  document.getElementById("youtubeKeyInput").value = YOUTUBE_KEY;
   document.getElementById("familyCodeInput").value = FAMILY_CODE;
   document.getElementById("settingsOverlay").hidden = false;
 };
@@ -2038,6 +2109,7 @@ document.getElementById("settingsOverlay").addEventListener("click", (e) => { if
 document.getElementById("settingsForm").addEventListener("submit", (e) => {
   e.preventDefault();
   saveTmdbKey(document.getElementById("tmdbKeyInput").value);
+  saveYoutubeKey(document.getElementById("youtubeKeyInput").value);
   const newCode = document.getElementById("familyCodeInput").value.trim();
   if(newCode && newCode !== FAMILY_CODE){
     FAMILY_CODE = newCode;
@@ -2061,6 +2133,7 @@ document.getElementById("codeGateForm").addEventListener("submit", (e) => {
 
 function init(){
   loadTmdbKey();
+  loadYoutubeKey();
   loadShownSuggestionIds();
   buildPlatformCheckboxes();
   buildLikedByCheckboxes();
