@@ -1778,6 +1778,9 @@ document.addEventListener("keydown", (e) => {
 function openExploreModal(){
   document.getElementById("exploreOverlay").hidden = false;
   updateSuggestionsUI();
+  if(TMDB_KEY && movies.some(m => m.tmdb)){
+    onFindSuggestionsClick(); // fetch a fresh batch every time the window opens
+  }
 }
 function closeExploreModal(){
   document.getElementById("exploreOverlay").hidden = true;
